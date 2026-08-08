@@ -704,11 +704,21 @@ export default function StudentExperience({ user, onLogout, GlobalStyles }) {
   }, [closeDrawer, drawer]);
 
   const navigate = path => {
-    window.history.pushState({}, "", path);
-    setRoute(path); closeDrawer(); setProfileMenu(false); setNotificationsOpen(false);
-    const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
-    window.scrollTo({ top: 0, behavior });
-  };
+  window.history.pushState({}, "", path);
+
+  const pathname = new URL(path, window.location.origin).pathname;
+  setRoute(pathname);
+
+  closeDrawer();
+  setProfileMenu(false);
+  setNotificationsOpen(false);
+
+  const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ? "auto"
+    : "smooth";
+
+  window.scrollTo({ top: 0, behavior });
+};
   const openSettingsSection = section => {
     window.sessionStorage.setItem("uninet-settings-section", section);
     window.dispatchEvent(new CustomEvent("uninet:settings-section", { detail: section }));
