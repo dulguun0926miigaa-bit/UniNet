@@ -1,0 +1,23 @@
+{
+  "allowed": [
+    "0BSD",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BlueOak-1.0.0",
+    "CC-BY-4.0",
+    "EPL-2.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "MIT and ISC",
+    "MPL-2.0",
+    "Unlicense"
+  ],
+  "overrides": {
+    "busboy@1.6.0": "MIT",
+    "seq-queue@0.0.5": "MIT",
+    "streamsearch@1.1.0": "MIT"
+  },
+  "deniedPatterns": ["AGPL", "GPL", "SSPL", "Commons-Clause", "BUSL"]
+}

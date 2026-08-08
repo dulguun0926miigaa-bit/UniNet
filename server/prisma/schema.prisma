@@ -1,0 +1,1063 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  PLATFORM_SUPER_ADMIN
+  UNIVERSITY_ADMIN
+  STAFF
+  STUDENT
+}
+
+enum UserStatus {
+  PENDING_VERIFICATION
+  PENDING_REVIEW
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+  REJECTED
+}
+
+enum UniversityStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+}
+
+enum UniversityMemberType {
+  STUDENT
+  STAFF
+  UNIVERSITY_ADMIN
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  GRADUATED
+  SUSPENDED
+  WITHDRAWN
+  UNKNOWN
+}
+
+enum DomainVerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  FAILED
+  REVOKED
+}
+
+enum DomainVerificationMethod {
+  ADMIN_APPROVAL
+  DNS_TXT
+  EMAIL
+}
+
+enum RosterImportStatus {
+  PREVIEWED
+  COMMITTING
+  COMMITTED
+  FAILED
+}
+
+enum ContentType {
+  EVENT
+  INTERNSHIP
+  JOB
+  RESEARCH
+  ANNOUNCEMENT
+}
+
+enum ContentVisibility {
+  PRIVATE
+  NETWORK
+  PARTNERS
+  PUBLIC
+}
+
+enum ContentStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  PUBLISHED
+  CHANGES_REQUESTED
+  REJECTED
+  ARCHIVED
+  EXPIRED
+}
+
+enum RegistrationStatus {
+  PAYMENT_PENDING
+  CONFIRMED
+  WAITLISTED
+  CANCELLED
+  ATTENDED
+  NO_SHOW
+}
+
+enum EventPricingType {
+  FREE
+  PAID
+}
+
+enum PaymentProvider {
+  STRIPE
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELED
+  REFUNDED
+}
+
+enum ApplicationStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  SHORTLISTED
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum PartnershipStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+  ENDED
+}
+
+enum AuditSeverity {
+  INFO
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum FeedbackStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  CLOSED
+}
+
+enum SurveyStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  ARCHIVED
+}
+
+enum PolicyType {
+  TERMS_OF_SERVICE
+  PRIVACY_POLICY
+}
+
+enum AccountActionType {
+  DEACTIVATE
+  DELETE
+}
+
+enum AccountActionStatus {
+  REQUESTED
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+  REJECTED
+}
+
+enum FilePurpose {
+  STUDENT_CV
+  PROFILE_AVATAR
+  UNIVERSITY_LOGO
+  ATTACHMENT
+}
+
+enum FileAssetStatus {
+  QUARANTINED
+  AVAILABLE
+  DELETED
+}
+
+enum MalwareScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  ERROR
+}
+
+model University {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  name                  String                 @unique
+  shortName             String                 @unique
+  slug                  String                 @unique
+  logoUrl               String?
+  description           String?
+  websiteUrl            String?
+  address               String?
+  contactEmail          String?
+  contactPhone          String?
+  primaryColor          String?
+  secondaryColor        String?
+  rectorName            String?
+  establishedYear       Int?
+  profileSettings       Json?
+  status                UniversityStatus       @default(PENDING)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  domains               UniversityDomain[]
+  members               UniversityMember[]
+  users                 User[]
+  studentProfiles       StudentProfile[]
+  staffProfiles         StaffProfile[]
+  surveys               Survey[]
+  contents              Content[]
+  notifications         Notification[]
+  consentRecords        ConsentRecord[]
+  auditLogs             AuditLog[]
+  invitations           UniversityInvitation[]
+  fileAssets            FileAsset[]
+  rosterImportJobs      RosterImportJob[]
+  partnershipsRequested Partnership[]          @relation("PartnershipRequester")
+  partnershipsReceived  Partnership[]          @relation("PartnershipPartner")
+}
+
+model UniversityDomain {
+  id                    String                   @id @default(uuid()) @db.Uuid
+  universityId          String                   @db.Uuid
+  domain                String                   @unique
+  isPrimary             Boolean                  @default(false)
+  isVerified            Boolean                  @default(false)
+  isActive              Boolean                  @default(true)
+  verificationStatus    DomainVerificationStatus @default(UNVERIFIED)
+  verificationMethod    DomainVerificationMethod?
+  verificationChallenge String?
+  verificationEvidence  String?
+  verificationRequestedAt DateTime?
+  verifiedAt            DateTime?
+  verifiedByUserId      String?                  @db.Uuid
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  university            University               @relation(fields: [universityId], references: [id], onDelete: Cascade)
+
+  @@index([universityId])
+  @@index([universityId, isActive, verificationStatus])
+}
+
+model User {
+  id                       String                     @id @default(uuid()) @db.Uuid
+  universityId             String?                    @db.Uuid
+  email                    String                     @unique
+  normalizedEmail          String                     @unique
+  passwordHash             String
+  googleId                 String?                    @unique
+  googleIssuer             String?
+  gmail                    String?
+  studentEmail             String?                    @unique
+  authProvider             String                     @default("PASSWORD")
+  googleLinkedAt           DateTime?
+  role                     UserRole
+  status                   UserStatus                 @default(PENDING_VERIFICATION)
+  emailVerifiedAt          DateTime?
+  lastLoginAt              DateTime?
+  deactivatedAt            DateTime?
+  deletionRequestedAt      DateTime?
+  deletionScheduledFor     DateTime?
+  legalHoldUntil           DateTime?
+  legalHoldReason          String?
+  createdAt                DateTime                   @default(now())
+  updatedAt                DateTime                   @updatedAt
+  university               University?                @relation(fields: [universityId], references: [id], onDelete: Restrict)
+  studentProfile           StudentProfile?
+  staffProfile             StaffProfile?
+  sessions                 Session[]
+  passwordResetTokens      PasswordResetToken[]
+  passwordResetOtpChallenges PasswordResetOtpChallenge[]
+  emailVerificationTokens  EmailVerificationToken[]
+  importedMembers          UniversityMember[]         @relation("UniversityMemberImporter")
+  createdSurveys           Survey[]                   @relation("SurveyCreator")
+  surveyResponses          SurveyResponse[]
+  createdContent           Content[]                  @relation("ContentCreator")
+  approvedContent          Content[]                  @relation("ContentApprover")
+  savedContent             SavedContent[]
+  eventRegistrations       EventRegistration[]
+  applications             Application[]
+  notifications            Notification[]
+  settings                 UserSettings?
+  consentRecords           ConsentRecord[]
+  policyAcceptances        PolicyAcceptance[]
+  accountActionRequests    AccountActionRequest[]
+  partnershipRequests      Partnership[]              @relation("PartnershipRequestActor")
+  auditLogs                AuditLog[]                 @relation("AuditActor")
+  feedback                 Feedback[]
+  contentStatusChanges     ContentStatusHistory[]     @relation("ContentStatusActor")
+  applicationStatusChanges ApplicationStatusHistory[] @relation("ApplicationStatusActor")
+  sentInvitations          UniversityInvitation[]     @relation("InvitationSender")
+  acceptedInvitation       UniversityInvitation?      @relation("InvitationAcceptedUser")
+  idempotencyRecords       IdempotencyRecord[]
+  fileAssets               FileAsset[]                @relation("FileOwner")
+  rosterImports            RosterImportJob[]           @relation("RosterImportUploader")
+  oauthAccounts           OAuthAccount[]
+  mfaTotpCredential       MfaTotpCredential?
+  mfaRecoveryCodes        MfaRecoveryCode[]
+  passwordHistory         PasswordHistory[]
+  emailChangeRequests     EmailChangeRequest[]
+  payments                Payment[]
+
+  @@index([universityId])
+  @@index([role])
+  @@index([status])
+  @@unique([googleIssuer, googleId])
+}
+
+model OAuthAccount {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @db.Uuid
+  provider        String
+  issuer          String
+  providerSubject String
+  providerEmail   String?
+  providerEmailVerified Boolean @default(false)
+  metadata        Json?
+  linkedAt        DateTime @default(now())
+  lastUsedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([issuer, providerSubject])
+  @@unique([userId, provider])
+  @@index([userId, linkedAt])
+  @@index([provider, providerEmail])
+}
+
+model MfaTotpCredential {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @unique @db.Uuid
+  secretCiphertext String
+  secretIv         String
+  secretTag        String
+  verifiedAt       DateTime?
+  enabledAt        DateTime?
+  lastUsedStep     BigInt?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([enabledAt])
+}
+
+model MfaRecoveryCode {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  codeHash  String    @unique
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt])
+}
+
+model PasswordHistory {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  passwordHash String
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model LoginSecurityState {
+  id            String    @id @default(uuid()) @db.Uuid
+  keyHash       String    @unique
+  emailHash     String?
+  ipHash        String?
+  failureCount  Int       @default(0)
+  blockedUntil  DateTime?
+  lastFailureAt DateTime?
+  lastSuccessAt DateTime?
+  notifiedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([blockedUntil])
+  @@index([emailHash, lastFailureAt])
+}
+
+model EmailChangeRequest {
+  id                 String    @id @default(uuid()) @db.Uuid
+  userId             String    @db.Uuid
+  newEmail           String
+  newNormalizedEmail String
+  tokenHash          String    @unique
+  expiresAt          DateTime
+  verifiedAt         DateTime?
+  cancelledAt        DateTime?
+  createdAt          DateTime  @default(now())
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([newNormalizedEmail, verifiedAt, cancelledAt])
+  @@index([expiresAt])
+}
+
+model UniversityMember {
+  id               String               @id @default(uuid()) @db.Uuid
+  universityId     String               @db.Uuid
+  email            String
+  normalizedEmail  String
+  studentId        String?
+  employeeCode     String?
+  firstName        String?
+  lastName         String?
+  memberType       UniversityMemberType
+  enrollmentStatus EnrollmentStatus     @default(UNKNOWN)
+  department       String?
+  major            String?
+  graduationYear   Int?
+  validFrom        DateTime?
+  validUntil       DateTime?
+  importedAt       DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  importedByUserId String?              @db.Uuid
+  importJobId      String?              @db.Uuid
+  university       University           @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  importedByUser   User?                @relation("UniversityMemberImporter", fields: [importedByUserId], references: [id], onDelete: SetNull)
+  importJob        RosterImportJob?      @relation(fields: [importJobId], references: [id], onDelete: SetNull)
+  studentProfile   StudentProfile?
+
+  @@unique([universityId, normalizedEmail])
+  @@unique([universityId, studentId])
+  @@unique([universityId, employeeCode])
+  @@index([universityId])
+  @@index([normalizedEmail])
+  @@index([memberType])
+  @@index([enrollmentStatus])
+  @@index([universityId, enrollmentStatus])
+  @@index([importJobId])
+}
+
+model RosterImportJob {
+  id             String             @id @default(uuid()) @db.Uuid
+  universityId   String             @db.Uuid
+  uploadedById   String             @db.Uuid
+  fileName       String
+  fileSha256     String
+  status         RosterImportStatus @default(PREVIEWED)
+  validatedRows  Json
+  totalRows      Int
+  validRows      Int
+  invalidRows    Int
+  insertedRows   Int                @default(0)
+  updatedRows    Int                @default(0)
+  skippedRows    Int                @default(0)
+  failureCode    String?
+  createdAt      DateTime           @default(now())
+  committedAt    DateTime?
+  university     University         @relation(fields: [universityId], references: [id], onDelete: Restrict)
+  uploadedBy     User               @relation("RosterImportUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  rowErrors      RosterImportRowError[]
+  members        UniversityMember[]
+
+  @@index([universityId, createdAt])
+  @@index([uploadedById, createdAt])
+  @@index([status, createdAt])
+  @@unique([universityId, fileSha256, uploadedById, createdAt])
+}
+
+model RosterImportRowError {
+  id             String          @id @default(uuid()) @db.Uuid
+  importJobId    String          @db.Uuid
+  rowNumber      Int
+  field          String?
+  code           String
+  message        String
+  rowFingerprint String
+  createdAt      DateTime        @default(now())
+  importJob      RosterImportJob @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+
+  @@index([importJobId, rowNumber])
+  @@index([code])
+}
+
+model StudentProfile {
+  id             String      @id @default(uuid()) @db.Uuid
+  userId         String      @unique @db.Uuid
+  universityId   String?     @db.Uuid
+  studentId      String?
+  firstName      String
+  lastName       String
+  department     String?
+  major          String?
+  enrollmentYear Int?
+  graduationYear Int?
+  phone          String?
+  avatarUrl      String?
+  bio            String?
+  cvUrl          String?
+  portfolioUrl   String?
+  githubUrl      String?
+  linkedinUrl    String?
+  avatarAssetId  String?     @unique @db.Uuid
+  cvAssetId      String?     @unique @db.Uuid
+  rosterMemberId String?     @unique @db.Uuid
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  university     University? @relation(fields: [universityId], references: [id], onDelete: Restrict)
+  avatarAsset    FileAsset?  @relation("StudentAvatar", fields: [avatarAssetId], references: [id], onDelete: SetNull)
+  cvAsset        FileAsset?  @relation("StudentCv", fields: [cvAssetId], references: [id], onDelete: SetNull)
+  rosterMember   UniversityMember? @relation(fields: [rosterMemberId], references: [id], onDelete: SetNull)
+
+  @@unique([universityId, studentId])
+  @@index([universityId])
+}
+
+model StaffProfile {
+  id                     String     @id @default(uuid()) @db.Uuid
+  userId                 String     @unique @db.Uuid
+  universityId           String     @db.Uuid
+  employeeCode           String?
+  firstName              String
+  lastName               String
+  department             String?
+  jobTitle               String?
+  canCreateContent       Boolean    @default(false)
+  canPublish             Boolean    @default(false)
+  canManageRegistrations Boolean    @default(false)
+  canManageApplications  Boolean    @default(false)
+  canManageSurveys       Boolean    @default(false)
+  canViewReports         Boolean    @default(false)
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+  user                   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  university             University @relation(fields: [universityId], references: [id], onDelete: Restrict)
+
+  @@unique([universityId, employeeCode])
+  @@index([universityId])
+}
+
+model Session {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @db.Uuid
+  familyId         String    @db.Uuid
+  rotatedFromId    String?   @unique @db.Uuid
+  refreshTokenHash String    @unique
+  userAgent        String?
+  ipAddress        String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  compromisedAt    DateTime?
+  lastUsedAt       DateTime?
+  mfaVerifiedAt    DateTime?
+  remembered       Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rotatedFrom      Session?  @relation("SessionRotation", fields: [rotatedFromId], references: [id], onDelete: SetNull)
+  rotatedTo        Session?  @relation("SessionRotation")
+
+  @@index([userId])
+  @@index([userId, revokedAt])
+  @@index([familyId])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PasswordResetOtpChallenge {
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @db.Uuid
+  challengeTokenHash String   @unique
+  codeHash          String
+  destination       String
+  attemptCount      Int       @default(0)
+  expiresAt         DateTime
+  usedAt            DateTime?
+  createdAt         DateTime  @default(now())
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt, createdAt])
+  @@index([expiresAt])
+}
+
+model EmailVerificationToken {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @db.Uuid
+  tokenHash    String    @unique
+  attemptCount Int       @default(0)
+  expiresAt    DateTime
+  usedAt       DateTime?
+  createdAt    DateTime  @default(now())
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt, createdAt])
+  @@index([expiresAt])
+}
+
+model UniversityInvitation {
+  id              String     @id @default(uuid()) @db.Uuid
+  universityId    String     @db.Uuid
+  invitedById     String     @db.Uuid
+  acceptedUserId  String?    @unique @db.Uuid
+  email           String
+  normalizedEmail String
+  role            UserRole
+  tokenHash       String     @unique
+  employeeCode    String?
+  department      String?
+  jobTitle        String?
+  permissions     Json?
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  university      University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  invitedBy       User       @relation("InvitationSender", fields: [invitedById], references: [id], onDelete: Restrict)
+  acceptedUser    User?      @relation("InvitationAcceptedUser", fields: [acceptedUserId], references: [id], onDelete: SetNull)
+
+  @@index([universityId, normalizedEmail, role])
+  @@index([universityId, createdAt])
+  @@index([expiresAt])
+}
+
+model Survey {
+  id            String            @id @default(uuid()) @db.Uuid
+  universityId  String?           @db.Uuid
+  createdById   String            @db.Uuid
+  title         String
+  description   String
+  questions     Json
+  schemaVersion Int               @default(1)
+  visibility    ContentVisibility @default(PRIVATE)
+  status        SurveyStatus      @default(PUBLISHED)
+  publishedAt   DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  university    University?      @relation(fields: [universityId], references: [id], onDelete: SetNull)
+  createdBy     User             @relation("SurveyCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  responses     SurveyResponse[]
+
+  @@index([universityId])
+  @@index([createdById])
+  @@index([status, visibility, publishedAt])
+  @@index([universityId, status, visibility])
+}
+
+model SurveyResponse {
+  id                  String   @id @default(uuid()) @db.Uuid
+  surveyId            String   @db.Uuid
+  userId              String   @db.Uuid
+  answers             Json
+  surveySchemaVersion Int      @default(1)
+  submittedAt         DateTime @default(now())
+  survey              Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([surveyId, userId])
+  @@index([surveyId])
+  @@index([userId])
+}
+
+model Content {
+  id               String                 @id @default(uuid()) @db.Uuid
+  slug             String                 @unique
+  universityId     String?                @db.Uuid
+  createdById      String?                @db.Uuid
+  approvedById     String?                @db.Uuid
+  type             ContentType
+  visibility       ContentVisibility      @default(PRIVATE)
+  status           ContentStatus          @default(DRAFT)
+  title            String
+  shortDescription String
+  description      String
+  category         String?
+  organization     String?
+  location         String?
+  mode             String?
+  startsAt         DateTime?
+  endsAt           DateTime?
+  deadlineAt       DateTime?
+  capacity         Int?
+  pricingType      EventPricingType       @default(FREE)
+  priceAmount      Int                    @default(0)
+  currency         String                 @default("MNT")
+  viewCount        Int                    @default(0)
+  engagementCount  Int                    @default(0)
+  version          Int                    @default(1)
+  details          Json?
+  publishedAt      DateTime?
+  approvedAt       DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  university       University?            @relation(fields: [universityId], references: [id], onDelete: SetNull)
+  createdBy        User?                  @relation("ContentCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  approvedBy       User?                  @relation("ContentApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  savedBy          SavedContent[]
+  registrations    EventRegistration[]
+  applications     Application[]
+  notifications    Notification[]
+  statusHistory    ContentStatusHistory[]
+  payments         Payment[]
+
+  @@index([universityId, status])
+  @@index([type, status, publishedAt])
+  @@index([visibility, status])
+  @@index([createdById])
+  @@index([deadlineAt])
+}
+
+model ContentStatusHistory {
+  id         String         @id @default(uuid()) @db.Uuid
+  contentId  String         @db.Uuid
+  actorId    String?        @db.Uuid
+  fromStatus ContentStatus?
+  toStatus   ContentStatus
+  reason     String?
+  createdAt  DateTime       @default(now())
+  content    Content        @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  actor      User?          @relation("ContentStatusActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([contentId, createdAt])
+  @@index([actorId, createdAt])
+}
+
+model SavedContent {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  contentId String   @db.Uuid
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content   Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contentId])
+  @@index([contentId])
+}
+
+model EventRegistration {
+  id               String             @id @default(uuid()) @db.Uuid
+  userId           String             @db.Uuid
+  contentId        String             @db.Uuid
+  status           RegistrationStatus @default(CONFIRMED)
+  registrationCode String             @unique
+  waitlistPosition Int?
+  consentGranted   Boolean            @default(true)
+  attendedAt       DateTime?
+  cancelledAt      DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content          Content            @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  payment          Payment?
+
+  @@unique([userId, contentId])
+  @@index([contentId, status])
+  @@index([userId, status])
+}
+
+model Payment {
+  id                String          @id @default(uuid()) @db.Uuid
+  userId            String          @db.Uuid
+  contentId         String          @db.Uuid
+  registrationId    String          @unique @db.Uuid
+  provider          PaymentProvider @default(STRIPE)
+  providerSessionId String?         @unique
+  providerPaymentId String?         @unique
+  amount            Int
+  currency          String          @default("MNT")
+  status            PaymentStatus   @default(PENDING)
+  paidAt            DateTime?
+  refundedAt        DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content           Content         @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  registration      EventRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([contentId, status])
+  @@index([provider, status])
+}
+
+model Application {
+  id             String                     @id @default(uuid()) @db.Uuid
+  userId         String                     @db.Uuid
+  contentId      String                     @db.Uuid
+  status         ApplicationStatus          @default(SUBMITTED)
+  cvUrl          String?
+  cvAssetId      String?                    @db.Uuid
+  coverNote      String?
+  consentGranted Boolean                    @default(true)
+  submittedAt    DateTime                   @default(now())
+  reviewedAt     DateTime?
+  withdrawnAt    DateTime?
+  updatedAt      DateTime                   @updatedAt
+  user           User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content        Content                    @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  cvAsset        FileAsset?                 @relation(fields: [cvAssetId], references: [id], onDelete: Restrict)
+  statusHistory  ApplicationStatusHistory[]
+
+  @@unique([userId, contentId])
+  @@index([contentId, status])
+  @@index([userId, status])
+  @@index([cvAssetId])
+}
+
+model FileAsset {
+  id            String            @id @default(uuid()) @db.Uuid
+  ownerId       String            @db.Uuid
+  universityId  String?           @db.Uuid
+  purpose       FilePurpose
+  status        FileAssetStatus   @default(QUARANTINED)
+  storageKey    String            @unique
+  sha256        String
+  detectedMime  String
+  originalName  String
+  sizeBytes     BigInt
+  scanStatus    MalwareScanStatus @default(PENDING)
+  scanProvider  String?
+  scanResult    String?
+  scannedAt     DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  deletedAt     DateTime?
+  owner         User              @relation("FileOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  university    University?       @relation(fields: [universityId], references: [id], onDelete: Restrict)
+  avatarProfile StudentProfile?   @relation("StudentAvatar")
+  cvProfile     StudentProfile?   @relation("StudentCv")
+  applications  Application[]
+
+  @@index([ownerId, purpose, status, createdAt])
+  @@index([universityId, purpose, status])
+  @@index([sha256])
+  @@index([scanStatus, createdAt])
+}
+
+model ApplicationStatusHistory {
+  id            String             @id @default(uuid()) @db.Uuid
+  applicationId String             @db.Uuid
+  actorId       String?            @db.Uuid
+  fromStatus    ApplicationStatus?
+  toStatus      ApplicationStatus
+  reason        String?
+  createdAt     DateTime           @default(now())
+  application   Application        @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  actor         User?              @relation("ApplicationStatusActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([applicationId, createdAt])
+  @@index([actorId, createdAt])
+}
+
+model Notification {
+  id           String      @id @default(uuid()) @db.Uuid
+  userId       String      @db.Uuid
+  universityId String?     @db.Uuid
+  contentId    String?     @db.Uuid
+  type         String
+  title        String
+  description  String
+  actionUrl    String?
+  readAt       DateTime?
+  createdAt    DateTime    @default(now())
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  university   University? @relation(fields: [universityId], references: [id], onDelete: SetNull)
+  content      Content?    @relation(fields: [contentId], references: [id], onDelete: SetNull)
+
+  @@index([userId, readAt, createdAt])
+  @@index([universityId])
+}
+
+model UserSettings {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @unique @db.Uuid
+  security      Json?
+  notifications Json?
+  privacy       Json?
+  appearance    Json?
+  locale        Json?
+  accessibility Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ConsentRecord {
+  id                    String         @id @default(uuid()) @db.Uuid
+  userId                String         @db.Uuid
+  recipientUniversityId String?        @db.Uuid
+  resourceType          String?
+  resourceId            String?        @db.Uuid
+  supersedesId          String?        @unique @db.Uuid
+  recipientName         String
+  purpose               String
+  dataFields            Json
+  action                String
+  context               Json?
+  grantedAt             DateTime       @default(now())
+  revokedAt             DateTime?
+  revokedReason         String?
+  user                  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipientUniversity   University?    @relation(fields: [recipientUniversityId], references: [id], onDelete: SetNull)
+  supersedes            ConsentRecord? @relation("ConsentSupersession", fields: [supersedesId], references: [id], onDelete: SetNull)
+  supersededBy          ConsentRecord? @relation("ConsentSupersession")
+
+  @@index([userId, grantedAt])
+  @@index([userId, action, revokedAt])
+  @@index([resourceType, resourceId])
+  @@index([recipientUniversityId])
+}
+
+model PolicyDocument {
+  id          String             @id @default(uuid()) @db.Uuid
+  type        PolicyType
+  version     String
+  locale      String             @default("mn")
+  title       String
+  content     String
+  checksum    String
+  required    Boolean            @default(true)
+  publishedAt DateTime
+  effectiveAt DateTime
+  retiredAt   DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  acceptances PolicyAcceptance[]
+
+  @@unique([type, version, locale])
+  @@index([type, locale, effectiveAt])
+  @@index([required, publishedAt, retiredAt])
+}
+
+model PolicyAcceptance {
+  id               String         @id @default(uuid()) @db.Uuid
+  userId           String         @db.Uuid
+  policyDocumentId String         @db.Uuid
+  policyType       PolicyType
+  policyVersion    String
+  documentChecksum String
+  source           String         @default("WEB")
+  ipAddress        String?
+  userAgent        String?
+  context          Json?
+  acceptedAt       DateTime       @default(now())
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  policyDocument   PolicyDocument @relation(fields: [policyDocumentId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, policyDocumentId])
+  @@index([userId, acceptedAt])
+  @@index([policyType, policyVersion])
+}
+
+model AccountActionRequest {
+  id              String              @id @default(uuid()) @db.Uuid
+  userId          String              @db.Uuid
+  type            AccountActionType
+  status          AccountActionStatus @default(REQUESTED)
+  reason          String?
+  requestedAt     DateTime            @default(now())
+  scheduledFor    DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  legalHoldUntil  DateTime?
+  legalHoldReason String?
+  ipAddress       String?
+  userAgent       String?
+  context         Json?
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, requestedAt])
+  @@index([type, status, scheduledFor])
+}
+
+model Partnership {
+  id                    String            @id @default(uuid()) @db.Uuid
+  requesterUniversityId String            @db.Uuid
+  partnerUniversityId   String            @db.Uuid
+  requestedByUserId     String?           @db.Uuid
+  status                PartnershipStatus @default(PENDING)
+  sharedContentCount    Int               @default(0)
+  requestedAt           DateTime          @default(now())
+  activatedAt           DateTime?
+  endedAt               DateTime?
+  requesterUniversity   University        @relation("PartnershipRequester", fields: [requesterUniversityId], references: [id], onDelete: Cascade)
+  partnerUniversity     University        @relation("PartnershipPartner", fields: [partnerUniversityId], references: [id], onDelete: Cascade)
+  requestedBy           User?             @relation("PartnershipRequestActor", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([requesterUniversityId, partnerUniversityId])
+  @@index([partnerUniversityId, status])
+  @@index([requestedByUserId])
+}
+
+model AuditLog {
+  id           String        @id @default(uuid()) @db.Uuid
+  actorId      String?       @db.Uuid
+  universityId String?       @db.Uuid
+  action       String
+  resourceType String
+  resourceId   String?
+  resourceName String?
+  previousData Json?
+  nextData     Json?
+  severity     AuditSeverity @default(INFO)
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime      @default(now())
+  actor        User?         @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  university   University?   @relation(fields: [universityId], references: [id], onDelete: SetNull)
+
+  @@index([universityId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+}
+
+model Feedback {
+  id        String         @id @default(uuid()) @db.Uuid
+  userId    String         @db.Uuid
+  category  String
+  subject   String
+  message   String
+  status    FeedbackStatus @default(OPEN)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+}
+
+model IdempotencyRecord {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  key            String
+  method         String
+  path           String
+  requestHash    String
+  state          String   @default("IN_PROGRESS")
+  responseStatus Int?
+  responseBody   Json?
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key, method, path])
+  @@index([expiresAt])
+  @@index([userId, createdAt])
+}

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">UniNet</title>
+  <defs>
+    <linearGradient id="brand" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#brand)"/>
+  <circle cx="18" cy="21" r="5" fill="#fff"/>
+  <circle cx="46" cy="21" r="5" fill="#fff"/>
+  <circle cx="32" cy="45" r="5" fill="#fff"/>
+  <path d="M22.5 23.5 29 40M41.5 23.5 35 40M23 21h18" fill="none" stroke="#fff" stroke-linecap="round" stroke-width="4"/>
+</svg>

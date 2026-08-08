@@ -1,0 +1,9 @@
+import fs from 'node:fs'; import path from 'node:path'; import assert from 'node:assert/strict'; import {fileURLToPath} from 'node:url'; import {openApiDocument} from '../server/src/openapi/openapi.document.js'
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'); const read=r=>fs.readFileSync(path.join(root,r),'utf8'); let n=0; const has=(f,x)=>{assert.ok(read(f).includes(x),`${f} missing ${x}`);n++}; const lacks=(f,x)=>{assert.ok(!read(f).includes(x),`${f} contains ${x}`);n++}
+assert.ok(openApiDocument.paths['/api/auth/password-reset/request']);n++; assert.ok(openApiDocument.paths['/api/auth/password-reset/verify-otp']);n++; assert.ok(openApiDocument.paths['/api/auth/password-reset/confirm']);n++
+has('server/src/auth/auth.service.js','sendPasswordResetOtp'); lacks('server/src/auth/mfa.service.js','PASSWORD_RESET_AUTHENTICATOR_QR_ISSUED'); lacks('src/Uninetlanding.jsx','forgot-authenticator')
+has('src/Uninetlanding.jsx','authView === "forgot-new-password"'); has('server/src/auth/auth.repository.js','PASSWORD_HISTORY_COUNT'); has('server/src/auth/auth.repository.js','revokedAt: now')
+lacks('src/auth/authService.js','Admin step-up:'); lacks('src/api/apiClient.js','highRiskMutationHeaderProvider')
+for(const file of ['server/src/universities/university.routes.js','server/src/operations/operations.routes.js','server/src/operations/workflow.routes.js','server/src/memberships/membership.routes.js','server/src/surveys/survey.routes.js']) lacks(file,'requirePlatformMutationStepUp')
+has('src/operations/OperationsExperience.jsx','Контентыг амжилттай баталлаа.'); has('src/operations/OperationsExperience.jsx','Контентыг татгалзлаа.'); has('src/operations/OperationsExperience.jsx','Өргөдөл амжилттай батлагдлаа.'); has('src/operations/OperationsExperience.jsx','Өргөдлийг амжилттай татгалзлаа.')
+console.log(`Phase 5L compatibility smoke passed: ${n} assertions.`)

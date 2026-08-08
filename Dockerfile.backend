@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1.7
+FROM node:24.15.0-bookworm-slim AS base
+
+RUN apt-get update \
+  && apt-get install --yes --no-install-recommends ca-certificates openssl \
+  && rm -rf /var/lib/apt/lists/*
+
+FROM base AS dependencies
+
+WORKDIR /app
+COPY package.json package-lock.json .npmrc ./
+RUN npm ci
+
+COPY prisma.config.ts ./
+COPY server/prisma ./server/prisma
+ARG DATABASE_URL=postgresql://docker-build:docker-build@localhost:5432/uninet_build?schema=public
+ENV DATABASE_URL=${DATABASE_URL}
+RUN npm run db:generate
+
+FROM base AS runtime
+
+ENV NODE_ENV=production
+WORKDIR /app
+
+COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
+COPY --chown=node:node package.json package-lock.json prisma.config.ts ./
+COPY --chown=node:node server ./server
+COPY --chown=node:node scripts ./scripts
+
+USER node
+EXPOSE 4000
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
+  CMD node -e "fetch('http://127.0.0.1:4000/api/health').then((response) => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))"
+
+CMD ["npm", "run", "server:start"]

@@ -1,0 +1,199 @@
+name: uninet-local
+
+x-service-environment: &service-environment
+  NODE_ENV: development
+  DATABASE_URL: postgresql://uninet:uninet-local-only@postgres:5432/uninet?schema=public
+  REDIS_URL: redis://redis:6379
+  JWT_ACCESS_SECRET: local-compose-access-secret-change-before-production-0001
+  JWT_REFRESH_SECRET: local-compose-refresh-secret-change-before-production-0002
+  OAUTH_STATE_SECRET: local-compose-oauth-state-secret-change-before-production-0003
+  APP_URL: http://localhost:5173
+  CORS_ORIGINS: http://localhost:5173,http://localhost:5174
+  GOOGLE_OAUTH_ENABLED: ${GOOGLE_OAUTH_ENABLED:-false}
+  GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+  GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+  GOOGLE_OAUTH_REDIRECT_URI: http://localhost:4000/api/auth/google/callback
+  EMAIL_VERIFICATION_ENABLED: "false"
+  EMAIL_DELIVERY_MODE: smtp
+  EMAIL_FROM: no-reply@uninet.local
+  SMTP_HOST: mailpit
+  SMTP_PORT: 1025
+  SMTP_SECURE: "false"
+  SMTP_USER: uninet-local
+  SMTP_PASSWORD: uninet-local
+  FILE_STORAGE_PROVIDER: s3
+  S3_ENDPOINT: http://minio:9000
+  S3_REGION: us-east-1
+  S3_BUCKET: uninet-files
+  S3_ACCESS_KEY: uninet-local
+  S3_SECRET_KEY: uninet-local-secret
+  S3_FORCE_PATH_STYLE: "true"
+  CLAMAV_MODE: clamd
+  CLAMAV_HOST: clamav
+  CLAMAV_PORT: 3310
+  SERVICE_BIND_HOST: 0.0.0.0
+
+x-service-dependencies: &service-dependencies
+  postgres:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+  mailpit:
+    condition: service_started
+  minio-init:
+    condition: service_completed_successfully
+  clamav:
+    condition: service_started
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: uninet
+      POSTGRES_USER: uninet
+      POSTGRES_PASSWORD: uninet-local-only
+    ports: ["5433:5432"]
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uninet -d uninet"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["6379:6379"]
+    volumes: ["redis-data:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports: ["1025:1025", "8025:8025"]
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: uninet-local
+      MINIO_ROOT_PASSWORD: uninet-local-secret
+    ports: ["9000:9000", "9001:9001"]
+    volumes: ["minio-data:/data"]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["mc alias set local http://minio:9000 uninet-local uninet-local-secret && mc mb --ignore-existing local/uninet-files"]
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  clamav:
+    image: clamav/clamav:1.4
+    ports: ["3310:3310"]
+    volumes: ["clamav-data:/var/lib/clamav"]
+
+  db-migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    command: ["sh", "-c", "npm run db:deploy && npm run db:seed"]
+    environment:
+      <<: *service-environment
+    depends_on:
+      <<: *service-dependencies
+    restart: "no"
+
+  identity-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    command: ["node", "server/src/services/identity-service.js"]
+    environment:
+      <<: *service-environment
+      IDENTITY_SERVICE_PORT: 4101
+      CORE_SERVICE_PORT: 4102
+      IDENTITY_SERVICE_URL: http://identity-service:4101
+      CORE_SERVICE_URL: http://core-service:4102
+    expose: ["4101"]
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4101/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  core-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    command: ["node", "server/src/services/core-service.js"]
+    environment:
+      <<: *service-environment
+      IDENTITY_SERVICE_PORT: 4101
+      CORE_SERVICE_PORT: 4102
+      IDENTITY_SERVICE_URL: http://identity-service:4101
+      CORE_SERVICE_URL: http://core-service:4102
+    expose: ["4102"]
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4102/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    command: ["node", "server/src/services/api-gateway.js"]
+    environment:
+      <<: *service-environment
+      GATEWAY_PORT: 4000
+      GATEWAY_BIND_HOST: 0.0.0.0
+      IDENTITY_SERVICE_URL: http://identity-service:4101
+      CORE_SERVICE_URL: http://core-service:4102
+    ports: ["4000:4000"]
+    depends_on:
+      identity-service:
+        condition: service_healthy
+      core-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_API_URL: http://localhost:4000/api
+    ports: ["5173:80"]
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  clamav-data:
