@@ -19,8 +19,8 @@ const context = (req) => ({ ipAddress: req.ip, userAgent: req.get('user-agent') 
 const refreshCookieName = 'uninet.refresh'
 const refreshCookieOptions = {
   httpOnly: true,
-  secure: env.NODE_ENV === 'production',
-  sameSite: 'strict',
+  secure: true,
+  sameSite: 'none',
   path: '/api/auth',
 }
 
@@ -56,8 +56,8 @@ const oauthPendingCookie = 'uninet.oauth.pending'
 const oauthMfaCookie = 'uninet.oauth.mfa'
 const oauthCookieOptions = {
   httpOnly: true,
-  secure: env.NODE_ENV === 'production',
-  sameSite: 'lax',
+  secure: true,
+  sameSite: 'none',
   path: '/api/auth/google',
   maxAge: 10 * 60 * 1000,
 }
