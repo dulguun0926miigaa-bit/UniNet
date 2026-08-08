@@ -492,6 +492,9 @@ async function main() {
           }
         }
       }
+    }, {
+      maxWait: 10000,
+      timeout: 60000,
     })
 
     // Deterministic final-MVP demo data. These records are creator-scoped to the
