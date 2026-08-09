@@ -526,6 +526,7 @@ function NetworkBackground({ activeIdx }) {
    MAIN COMPONENT
    ============================================================ */
 export default function UniNetLanding() {
+  const initialSession = authService.getSession();
   const [uniIdx, setUniIdx] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const [tab, setTab] = useState("all");
@@ -543,9 +544,8 @@ export default function UniNetLanding() {
   const [googleOnboardingMode, setGoogleOnboardingMode] = useState("LINK_EXISTING");
   const [publicLoaded, setPublicLoaded] = useState(false);
   const [publicEventState, setPublicEventState] = useState(null);
-  const [currentUser, setCurrentUser] = useState(() => {
-    return authService.getSession();
-  });
+  const [currentUser, setCurrentUser] = useState(initialSession);
+  const [authReady, setAuthReady] = useState(Boolean(initialSession));
   const timerRef = useRef(null);
   const displayUniversities = publicBootstrap.universities.length
     ? publicBootstrap.universities.map((live, index) => {
@@ -587,6 +587,8 @@ export default function UniNetLanding() {
   const detectedUniversity = publicBootstrap.universities.find(({ domain }) =>
     domain && signupEmail.trim().toLowerCase().endsWith(`@${domain.toLowerCase()}`)
   );
+  const pathname = window.location.pathname;
+  const isProtectedPath = /^\/(student|staff|admin|platform)(\/|$)/.test(pathname);
 
   const openAuth = (view) => {
     setAuthView(view);
@@ -899,11 +901,12 @@ export default function UniNetLanding() {
 
   useEffect(() => {
     let active = true;
-    const onSessionExpired = () => { if (active) setCurrentUser(null); };
+    const onSessionExpired = () => { if (active) { setCurrentUser(null); setAuthReady(true); } };
     window.addEventListener("uninet:session-expired", onSessionExpired);
     authService.restoreSession()
-      .then((account) => { if (active && account) setCurrentUser(account); })
-      .catch(() => { if (active) { authService.clearSession(); setCurrentUser(null); } });
+      .then((account) => { if (active) setCurrentUser(account || null); })
+      .catch(() => { if (active) { authService.clearSession(); setCurrentUser(null); } })
+      .finally(() => { if (active) setAuthReady(true); });
     return () => { active = false; window.removeEventListener("uninet:session-expired", onSessionExpired); };
   }, []);
 
@@ -969,7 +972,15 @@ export default function UniNetLanding() {
     violet: { bg: "bg-violet-50", text: "text-violet-600", ring: "ring-violet-200", solid: "bg-violet-600" },
   };
 
-  if (window.location.pathname === "/accept-invitation") {
+  if (!authReady) {
+    return <DashboardLoading />;
+  }
+
+  if (!currentUser && isProtectedPath) {
+    window.history.replaceState({}, "", "/");
+  }
+
+  if (pathname === "/accept-invitation") {
     const goToLogin = async () => {
       if (currentUser) await authService.logout();
       window.history.replaceState({}, "", "/");
