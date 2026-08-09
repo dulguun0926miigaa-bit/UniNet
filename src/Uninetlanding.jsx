@@ -1868,15 +1868,31 @@ export default function UniNetLanding() {
       {/* ============ FOOTER ============ */}
       <footer className="bg-slate-900 text-slate-400 pt-16 pb-8">
         <div className="max-w-7xl mx-auto px-6 md:px-8">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-10 mb-12">
+          <div className="grid gap-10 mb-12 lg:grid-cols-[0.9fr_2.1fr]">
             <div className="lg:col-span-1 sm:col-span-2">
               <div className="flex items-center gap-2 text-white font-display font-bold text-lg mb-3">
                 UniNet
               </div>
               <p className="text-sm max-w-xs">Монголын их сургуулиудын хамтын ажиллагааны аюулгүй платформ.</p>
             </div>
-            <div><h5 className="font-display mb-4 text-xs font-bold uppercase tracking-wide text-white">Түгээмэл асуулт</h5><ul className="space-y-2.5 text-sm"><li>Сургуулийн имэйлээр хэрхэн бүртгүүлэх вэ?</li><li>Private ба Network ямар ялгаатай вэ?</li><li>Өргөдлийн явцаа хаанаас харах вэ?</li></ul></div>
-            <div><h5 className="font-display mb-4 text-xs font-bold uppercase tracking-wide text-white">Тусламж ба аюулгүй байдал</h5><ul className="space-y-2.5 text-sm"><li>Тусламжийн төв</li><li>Нууцлал ба зөвшөөрөл</li><li>Системийн төлөв</li><li>support@uninet.mn</li></ul></div>
+            <div>
+              <h5 className="font-display mb-5 text-xs font-bold uppercase tracking-wide text-white">Түгээмэл асуулт</h5>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {[
+                  { q: "Сургуулийн имэйлээр хэрхэн бүртгүүлэх вэ?", a: "Их сургуулийн албан ёсны имэйлээ оруулаад баталгаажуулах холбоосоор нэвтэрснээр тухайн сургуулийн орчинд холбогдоно." },
+                  { q: "Private ба Network ямар ялгаатай вэ?", a: "Private нь зөвхөн өөрийн сургуулийн дотоод мэдээлэл, Network нь бусад сургуулиудтай нээлттэй хуваалцсан боломжуудыг харуулна." },
+                  { q: "Өргөдлийн явцаа хаанаас харах вэ?", a: "Оюутны самбар дахь Миний өргөдлүүд хэсгээс илгээсэн өргөдөл, төлөв, timeline мэдээллээ шалгана." },
+                  { q: "Төлбөртэй event-ийн тасалбараа яаж авах вэ?", a: "Төлбөр амжилттай баталгаажсаны дараа Миний бүртгэлүүд хэсэгт QR тасалбар автоматаар нээгдэнэ." },
+                  { q: "Арга хэмжээнд бүртгүүлсний дараа мэдээллээ өөрчилж болох уу?", a: "Профайл дээрх үндсэн мэдээллээ шинэчилж болно. Харин event-ийн бүртгэлтэй холбоотой өөрчлөлтийг зохион байгуулагчийн зөвшөөрлөөр шийдвэрлэнэ." },
+                  { q: "Контент бүх оюутанд шууд харагдах уу?", a: "Сургуулийн дотоод контент зөвхөн зөвшөөрөгдсөн хэрэглэгчдэд, network контент баталгаажсаны дараа хамтын сүлжээнд харагдана." },
+                ].map(item => (
+                  <div key={item.q} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                    <h6 className="font-display text-sm font-bold text-white">{item.q}</h6>
+                    <p className="mt-2 text-xs leading-relaxed text-slate-400">{item.a}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
           <div className="border-t border-white/10 pt-6 flex flex-wrap items-center justify-between gap-4">
             <span className="text-xs">© {new Date().getFullYear()} UniNet. Монголын их сургуулиудын хамтын ажиллагааны платформ.</span>
