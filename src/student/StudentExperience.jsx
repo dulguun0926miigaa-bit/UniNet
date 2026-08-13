@@ -357,12 +357,16 @@ function DiscoveryPage({ route, data, savedIds, onSave, onView, onAction }) {
 }
 
 function RegistrationsPage({ registrations, onQr, onPay, onCancel, onCalendar }) {
-  const [tab, setTab] = useState("UPCOMING");
-  const visible = registrations.filter(item => tab === "WAITLISTED" ? item.status === "WAITLISTED" : tab === "CANCELLED" ? item.status === "CANCELLED" : true);
+  const [openedAt] = useState(Date.now);
+  const visible = registrations.filter(item => {
+    if (item.status === "CANCELLED") return false;
+    const expiresAt = Date.parse(item.ticketExpiresAt || "");
+    return !Number.isFinite(expiresAt) || expiresAt > openedAt;
+  });
   return (
     <>
       <PageHeader title="Миний бүртгэлүүд" description="Арга хэмжээний бүртгэл, waitlist болон QR тасалбараа удирдана." />
-      <Tabs tabs={[{ value: "UPCOMING", label: "Удахгүй болох" }, { value: "PAST", label: "Өнгөрсөн" }, { value: "WAITLISTED", label: "Хүлээлгийн жагсаалт" }, { value: "CANCELLED", label: "Цуцлагдсан" }]} active={tab} onChange={setTab} />
+      <div className="mb-4 inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">Удахгүй болох</div>
       <div className="space-y-4">
         {visible.length ? visible.map(item => (
           <article key={item.id} className="card-effect rounded-2xl border border-slate-200 bg-white p-6">
@@ -442,7 +446,6 @@ function StudentNotificationsPage({ notifications, onOpen, onMarkAll }) {
 
 function ProfilePage({ profile, setProfile, registrations, applications, completedSurveyCount, savedCount, onToast }) {
   const [editing, setEditing] = useState(false);
-  const [uploading, setUploading] = useState("");
   const toggleEdit = async () => {
     if (!editing) { setEditing(true); return; }
     try {
@@ -471,37 +474,12 @@ function ProfilePage({ profile, setProfile, registrations, applications, complet
       onToast("Профайл database-д хадгалагдлаа.");
     } catch (reason) { onToast(reason.message); }
   };
-  const uploadFile = async (event, kind) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    setUploading(kind);
-    try {
-      const asset = kind === "cv" ? await studentService.uploadCv(file) : await studentService.uploadAvatar(file);
-      setProfile(current => ({ ...current, [kind === "cv" ? "cvFile" : "avatarFile"]: asset }));
-      onToast(kind === "cv" ? "CV файл аюулгүй хадгалагдлаа." : "Профайл зураг шинэчлэгдлээ.");
-    } catch (reason) {
-      onToast(reason.message || "Файл оруулж чадсангүй.");
-    } finally { setUploading(""); }
-  };
-  const downloadCv = async () => {
-    if (!profile.cvFile?.id) return;
-    try {
-      const blob = await studentService.downloadFile(profile.cvFile.id);
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = profile.cvFile.originalName || "uninet-cv.pdf";
-      anchor.click();
-      URL.revokeObjectURL(url);
-    } catch (reason) { onToast(reason.message || "CV татаж чадсангүй."); }
-  };
   return (
     <>
       <PageHeader title="Профайл" description="Хувийн, академик болон карьерын мэдээллээ удирдана."
         actions={<button type="button" onClick={toggleEdit} className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white">{editing ? "Хадгалах" : "Засах"}</button>} />
       <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-6">
-        <div className="flex flex-wrap items-center gap-5"><SecureAvatar asset={profile.avatarFile} fallback={`${profile.firstName?.[0] || ""}${profile.lastName?.[0] || ""}`.toUpperCase()} /><div className="flex-1"><h2 className="font-display text-xl font-bold">{profile.lastName} {profile.firstName}</h2><p className="text-sm text-slate-500">{profile.university} · {profile.department} · {profile.major}</p><div className="mt-3 h-2 max-w-sm rounded-full bg-slate-100"><div className="h-2 rounded-full bg-blue-600" style={{ width: `${profile.completion}%` }} /></div><p className="mt-1 text-[10px] text-slate-400">Профайл {profile.completion}% бүрэн</p></div><label className="cursor-pointer rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold hover:bg-slate-50">{uploading === "avatar" ? "Шалгаж байна..." : "Зураг оруулах"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploading)} onChange={event => uploadFile(event, "avatar")} className="sr-only" /></label></div>
+        <div className="flex flex-wrap items-center gap-5"><SecureAvatar asset={profile.avatarFile} fallback={`${profile.firstName?.[0] || ""}${profile.lastName?.[0] || ""}`.toUpperCase()} /><div className="flex-1"><h2 className="font-display text-xl font-bold">{profile.lastName} {profile.firstName}</h2><p className="text-sm text-slate-500">{profile.university} · {profile.department} · {profile.major}</p><div className="mt-3 h-2 max-w-sm rounded-full bg-slate-100"><div className="h-2 rounded-full bg-blue-600" style={{ width: `${profile.completion}%` }} /></div><p className="mt-1 text-[10px] text-slate-400">Профайл {profile.completion}% бүрэн</p></div></div>
       </div>
       <div className="grid gap-6 lg:grid-cols-2">
         {[
@@ -518,13 +496,6 @@ function ProfilePage({ profile, setProfile, registrations, applications, complet
         ))}
         <section className="rounded-2xl border border-slate-200 bg-white p-6 lg:col-span-2">
           <h2 className="font-display mb-4 font-bold">Карьерын профайл</h2>
-          <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div><p className="text-xs font-bold text-slate-900">CV файл</p><p className="mt-1 text-xs text-slate-500">{profile.cvFile?.originalName || "PDF файл оруулаагүй"}</p></div>
-              <div className="flex gap-2">{profile.cvFile && <button type="button" onClick={downloadCv} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold">Татах</button>}<label className="cursor-pointer rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white">{uploading === "cv" ? "Шалгаж байна..." : "PDF оруулах"}<input type="file" accept="application/pdf,.pdf" disabled={Boolean(uploading)} onChange={event => uploadFile(event, "cv")} className="sr-only" /></label></div>
-            </div>
-            <p className="mt-2 text-[11px] leading-relaxed text-slate-400">Файлын бодит төрөл, SHA-256 бүрэн бүтэн байдал болон malware scan сервер дээр шалгагдана.</p>
-          </div>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block md:col-span-2"><span className="mb-1 block text-[10px] font-bold uppercase text-slate-400">Танилцуулга</span><textarea disabled={!editing} value={profile.about || ""} onChange={event => setProfile(current => ({ ...current, about: event.target.value }))} rows="4" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-500" /></label>
             {[["CV холбоос (fallback)", "cv"], ["Portfolio", "portfolio"], ["GitHub", "github"], ["LinkedIn", "linkedin"]].map(([label, key]) => <label key={key} className="block"><span className="mb-1 block text-[10px] font-bold uppercase text-slate-400">{label}</span><input type="url" disabled={!editing} value={profile[key] || ""} onChange={event => setProfile(current => ({ ...current, [key]: event.target.value }))} placeholder="https://..." className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-500" /></label>)}

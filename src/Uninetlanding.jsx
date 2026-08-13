@@ -148,6 +148,17 @@ const JOURNEY = [
  
 function cx(...a) { return a.filter(Boolean).join(" "); }
 
+function GoogleLogo() {
+  return <span className="grid h-7 w-7 place-items-center rounded-full bg-white shadow-sm" aria-hidden="true">
+    <svg viewBox="0 0 24 24" className="h-5 w-5" role="img">
+      <path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.4-.18-2.07H12v3.92h5.38a4.6 4.6 0 0 1-2 3.02v2.54h3.24c1.9-1.75 2.98-4.33 2.98-7.41Z" />
+      <path fill="#34A853" d="M12 22c2.7 0 4.96-.9 6.62-2.42l-3.24-2.51c-.9.6-2.05.96-3.38.96-2.6 0-4.8-1.76-5.59-4.12H3.07v2.59A10 10 0 0 0 12 22Z" />
+      <path fill="#FBBC05" d="M6.41 13.91A6 6 0 0 1 6.1 12c0-.66.11-1.3.31-1.91V7.5H3.07A10 10 0 0 0 2 12c0 1.61.39 3.14 1.07 4.5l3.34-2.59Z" />
+      <path fill="#EA4335" d="M12 5.97c1.47 0 2.79.51 3.83 1.5l2.87-2.87A9.62 9.62 0 0 0 12 2a10 10 0 0 0-8.93 5.5l3.34 2.59C7.2 7.73 9.4 5.97 12 5.97Z" />
+    </svg>
+  </span>;
+}
+
 function DashboardLoading() {
   return (
     <main className="font-body grid min-h-screen place-items-center bg-slate-50 px-5 text-slate-900" aria-live="polite" aria-busy="true">
@@ -1125,7 +1136,7 @@ export default function UniNetLanding() {
                 <div>
                   <button type="button" disabled={!publicBootstrap.oauth?.googleEnabled} onClick={() => authService.startGoogleOAuth("login", rememberMe)}
                     className="mb-4 flex w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50">
-                    <span className="grid h-7 w-7 place-items-center rounded-full bg-white text-lg font-black text-blue-600 shadow-sm">G</span>
+                    <GoogleLogo />
                     Google эрхээр нэвтрэх
                   </button>
                   {!publicBootstrap.oauth?.googleEnabled && <p className="mb-4 text-center text-[10px] text-slate-400">Google Cloud credentials тохируулсны дараа идэвхжинэ.</p>}
@@ -1159,7 +1170,7 @@ export default function UniNetLanding() {
                 <div>
                   <button type="button" disabled={!publicBootstrap.oauth?.googleEnabled} onClick={() => authService.startGoogleOAuth("register")}
                     className="mb-4 flex w-full items-center justify-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-800 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50">
-                    <span className="grid h-7 w-7 place-items-center rounded-full bg-white text-lg font-black text-blue-600 shadow-sm">G</span>
+                    <GoogleLogo />
                     Google эрхээр бүртгүүлэх
                   </button>
                   <div className="mb-5 flex items-center gap-3 text-[10px] font-bold uppercase tracking-wider text-slate-300"><span className="h-px flex-1 bg-slate-200" />эсвэл нууц үгээр<span className="h-px flex-1 bg-slate-200" /></div>

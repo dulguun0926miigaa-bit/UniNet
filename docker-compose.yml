@@ -12,7 +12,7 @@ x-service-environment: &service-environment
   GOOGLE_OAUTH_ENABLED: ${GOOGLE_OAUTH_ENABLED:-false}
   GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
   GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
-  GOOGLE_OAUTH_REDIRECT_URI: http://localhost:4000/api/auth/google/callback
+  GOOGLE_OAUTH_REDIRECT_URI: http://localhost:5173/api/auth/google/callback
   EMAIL_VERIFICATION_ENABLED: "false"
   EMAIL_DELIVERY_MODE: smtp
   EMAIL_FROM: no-reply@uninet.local
@@ -186,7 +186,7 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        VITE_API_URL: http://localhost:4000/api
+        VITE_API_URL: /api
     ports: ["5173:80"]
     depends_on:
       api-gateway:

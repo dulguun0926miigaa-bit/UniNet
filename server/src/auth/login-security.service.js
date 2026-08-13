@@ -18,8 +18,11 @@ function retrySeconds(state, now = new Date()) {
 }
 
 function backoffSeconds(failureCount) {
-  if (failureCount < env.LOGIN_BACKOFF_THRESHOLD) return 0
-  const exponent = Math.min(12, failureCount - env.LOGIN_BACKOFF_THRESHOLD)
+  const threshold = env.NODE_ENV === 'production'
+    ? env.LOGIN_BACKOFF_THRESHOLD
+    : Math.max(10, env.LOGIN_BACKOFF_THRESHOLD)
+  if (failureCount < threshold) return 0
+  const exponent = Math.min(12, failureCount - threshold)
   return Math.min(env.LOGIN_BACKOFF_MAX_SECONDS, 5 * (2 ** exponent))
 }
 

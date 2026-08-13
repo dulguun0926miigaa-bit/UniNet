@@ -34,7 +34,7 @@ export const environmentSchema = z.object({
   MFA_SETUP_EXPIRES_IN: z.string().regex(/^\d+[mhd]$/).default('10m'),
   STEP_UP_EXPIRES_IN: z.string().regex(/^\d+[mhd]$/).default('10m'),
   PASSWORD_HISTORY_COUNT: z.coerce.number().int().min(0).max(24).default(5),
-  LOGIN_BACKOFF_THRESHOLD: z.coerce.number().int().min(2).max(20).default(3),
+  LOGIN_BACKOFF_THRESHOLD: z.coerce.number().int().min(2).max(20).default(6),
   LOGIN_BACKOFF_MAX_SECONDS: z.coerce.number().int().min(30).max(86400).default(900),
   LOGIN_ALERT_THRESHOLD: z.coerce.number().int().min(3).max(30).default(5),
   EMAIL_CHANGE_TOKEN_EXPIRES_IN: z.string().regex(/^\d+[mhd]$/).default('30m'),

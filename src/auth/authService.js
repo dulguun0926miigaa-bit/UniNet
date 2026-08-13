@@ -3,6 +3,7 @@ import {
   restoreAccessSession,
   setAccessToken,
   setSessionExpiredHandler,
+  getAccessToken,
   API_URL,
 } from "../api/apiClient.js";
 
@@ -16,6 +17,7 @@ const permissionFields = {
 };
 
 let currentSession = null;
+let restoreSessionPromise = null;
 
 const normalizeUser = (user) => {
   const derivedPermissions = Object.entries(permissionFields)
@@ -142,13 +144,19 @@ export const authService = {
       body: JSON.stringify({ email }),
     });
   },
-  async restoreSession() {
-    const refreshed = await restoreAccessSession();
-    setAccessToken(refreshed.accessToken);
-    const result = await apiRequest("/auth/me", { retryAuth: false });
-    const account = normalizeUser(result.user);
-    this.saveSession(account, refreshed);
-    return account;
+  restoreSession() {
+    if (currentSession && getAccessToken()) return Promise.resolve(currentSession);
+    if (!restoreSessionPromise) {
+      restoreSessionPromise = (async () => {
+        const refreshed = await restoreAccessSession();
+        setAccessToken(refreshed.accessToken);
+        const result = await apiRequest("/auth/me", { retryAuth: false });
+        const account = normalizeUser(result.user);
+        this.saveSession(account, refreshed);
+        return account;
+      })().finally(() => { restoreSessionPromise = null; });
+    }
+    return restoreSessionPromise;
   },
   async logout() {
     try {
@@ -185,6 +193,7 @@ export const authService = {
   },
   clearSession() {
     currentSession = null;
+    restoreSessionPromise = null;
     setAccessToken(null);
     if (typeof window !== "undefined") {
       window.sessionStorage.removeItem("uninet.session");

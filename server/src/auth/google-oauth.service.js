@@ -213,13 +213,39 @@ export const googleOAuthService = {
       where: { googleIssuer: identity.googleIssuer, googleId: identity.googleId },
       include: { university: true, studentProfile: true, staffProfile: true },
     })
+    if (!user) {
+      const prelinkedUsers = await prisma.user.findMany({
+        where: {
+          gmail: { equals: identity.gmail, mode: 'insensitive' },
+          googleId: null,
+          status: 'ACTIVE',
+        },
+        include: { university: true, studentProfile: true, staffProfile: true },
+        take: 2,
+      })
+      if (prelinkedUsers.length > 1) {
+        throw new AppError('Энэ Google email олон account-д урьдчилан холбогдсон байна.', 409, 'GOOGLE_PRELINK_AMBIGUOUS')
+      }
+      user = prelinkedUsers[0] ?? null
+    }
     if (user) {
+      const linkedAt = user.googleLinkedAt ?? new Date()
       await prisma.$transaction([
-        prisma.user.update({ where: { id: user.id }, data: { gmail: identity.gmail, lastLoginAt: new Date() } }),
+        prisma.user.update({
+          where: { id: user.id },
+          data: {
+            gmail: identity.gmail,
+            googleId: user.googleId ?? identity.googleId,
+            googleIssuer: user.googleIssuer ?? identity.googleIssuer,
+            googleLinkedAt: linkedAt,
+            authProvider: user.authProvider === 'PASSWORD' ? 'PASSWORD_GOOGLE' : user.authProvider,
+            lastLoginAt: new Date(),
+          },
+        }),
         prisma.oAuthAccount.upsert({
           where: { issuer_providerSubject: { issuer: identity.googleIssuer, providerSubject: identity.googleId } },
           update: { providerEmail: identity.gmail, providerEmailVerified: true, lastUsedAt: new Date() },
-          create: { userId: user.id, provider: 'GOOGLE', issuer: identity.googleIssuer, providerSubject: identity.googleId, providerEmail: identity.gmail, providerEmailVerified: true, linkedAt: user.googleLinkedAt ?? new Date(), lastUsedAt: new Date() },
+          create: { userId: user.id, provider: 'GOOGLE', issuer: identity.googleIssuer, providerSubject: identity.googleId, providerEmail: identity.gmail, providerEmailVerified: true, linkedAt, lastUsedAt: new Date() },
         }),
       ])
       if (user.status === 'PENDING_REVIEW' && user.role === 'STUDENT' && user.emailVerifiedAt) {

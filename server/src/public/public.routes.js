@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
 import { env } from '../config/env.js'
+import { activeContentWhere } from '../utils/event-expiry.js'
 import { fileService } from '../files/file.service.js'
 import { AppError } from '../utils/app-error.js'
 
@@ -34,12 +35,14 @@ router.get('/universities/:id/logo', async (req, res, next) => {
 router.get('/events/:id', async (req, res, next) => {
   try {
     const id = uuid.parse(req.params.id)
+    const now = new Date()
     const event = await prisma.content.findFirst({
       where: {
         id,
         type: 'EVENT',
         status: 'PUBLISHED',
         visibility: { in: ['PUBLIC', 'NETWORK'] },
+        AND: [activeContentWhere(now)],
       },
       select: {
         id: true,
@@ -74,6 +77,7 @@ router.get('/events/:id', async (req, res, next) => {
 
 router.get('/bootstrap', async (_req, res, next) => {
   try {
+    const now = new Date()
     const [universities, content] = await Promise.all([
       prisma.university.findMany({
         where: { status: 'ACTIVE' },
@@ -104,7 +108,10 @@ router.get('/bootstrap', async (_req, res, next) => {
         where: {
           status: 'PUBLISHED',
           visibility: 'PUBLIC',
-          OR: [{ deadlineAt: null }, { deadlineAt: { gte: new Date() } }],
+          AND: [
+            { OR: [{ deadlineAt: null }, { deadlineAt: { gte: now } }] },
+            activeContentWhere(now),
+          ],
         },
         select: {
           id: true,

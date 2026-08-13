@@ -12,6 +12,7 @@ import { createNotification } from '../notifications/notification.service.js'
 import { emailService } from '../auth/email.service.js'
 import { publishedSurveyAudienceScope } from '../authorization/policy.js'
 import { createEventCheckoutSession, retrieveCheckoutSession } from '../payments/stripe.service.js'
+import { activeContentWhere, eventTicketExpiresAt } from '../utils/event-expiry.js'
 
 const router = Router()
 const uuid = z.string().uuid()
@@ -23,7 +24,6 @@ const applicationInput = z.object({
 }).strict()
 const eventRegistrationInput = z.object({ consentGranted: z.literal(true) }).strict()
 
-const activeRegistrationStatuses = /** @type {import('@prisma/client').RegistrationStatus[]} */ (['CONFIRMED', 'ATTENDED'])
 const seatHoldingRegistrationStatuses = /** @type {import('@prisma/client').RegistrationStatus[]} */ (['PAYMENT_PENDING', 'CONFIRMED', 'ATTENDED'])
 const dateOnly = value => value ? value.toISOString().slice(0, 10).replaceAll('-', '.') : null
 const timeOnly = value => value ? value.toISOString().slice(11, 16) : null
@@ -76,6 +76,8 @@ function serializeContent(item) {
     mode: item.mode,
     date: dateOnly(item.startsAt),
     time: timeOnly(item.startsAt),
+    startsAt: item.startsAt?.toISOString() ?? null,
+    endsAt: item.endsAt?.toISOString() ?? null,
     deadline: dateOnly(item.deadlineAt),
     capacity: item.capacity,
     pricingType: item.pricingType || 'FREE',
@@ -93,7 +95,7 @@ function serializeContent(item) {
 
 /** @returns {Promise<import('@prisma/client').Prisma.ContentWhereInput>} */
 async function visibleContentFilter(user) {
-  if (!user.universityId) return { status: 'PUBLISHED', visibility: 'PUBLIC' }
+  if (!user.universityId) return { status: 'PUBLISHED', visibility: 'PUBLIC', AND: [activeContentWhere()] }
   const partnerships = await prisma.partnership.findMany({
     where: {
       status: 'ACTIVE',
@@ -111,10 +113,15 @@ async function visibleContentFilter(user) {
   ))
   return /** @type {import('@prisma/client').Prisma.ContentWhereInput} */ ({
     status: 'PUBLISHED',
-    OR: [
-      { visibility: { in: ['PUBLIC', 'NETWORK'] } },
-      { universityId: user.universityId },
-      ...(partnerIds.length ? [{ visibility: 'PARTNERS', universityId: { in: partnerIds } }] : []),
+    AND: [
+      {
+        OR: [
+          { visibility: { in: ['PUBLIC', 'NETWORK'] } },
+          { universityId: user.universityId },
+          ...(partnerIds.length ? [{ visibility: 'PARTNERS', universityId: { in: partnerIds } }] : []),
+        ],
+      },
+      activeContentWhere(),
     ],
   })
 }
@@ -207,7 +214,11 @@ router.get('/bootstrap', async (req, res, next) => {
         take: 30,
       }),
       prisma.eventRegistration.findMany({
-        where: { userId, status: { not: 'CANCELLED' } },
+        where: {
+          userId,
+          status: { not: 'CANCELLED' },
+          content: activeContentWhere(),
+        },
         include: { content: { include: { university: { select: { shortName: true } } } }, payment: true },
         orderBy: { createdAt: 'desc' },
       }),
@@ -324,6 +335,9 @@ router.get('/bootstrap', async (req, res, next) => {
         priceAmount: registration.content.priceAmount || 0,
         currency: registration.content.currency || 'MNT',
         paymentStatus: registration.payment?.status || null,
+        startsAt: registration.content.startsAt?.toISOString() ?? null,
+        endsAt: registration.content.endsAt?.toISOString() ?? null,
+        ticketExpiresAt: eventTicketExpiresAt(registration.content)?.toISOString() ?? null,
       })),
       applications: applications.map(application => ({
         id: application.id,
@@ -563,8 +577,8 @@ router.get('/events/:id/ticket', async (req, res, next) => {
     if (registration.content.pricingType === 'PAID' && registration.payment?.status !== 'PAID') {
       throw new AppError('Төлбөр баталгаажаагүй тул QR тасалбар бэлэн болоогүй байна.', 409, 'EVENT_PAYMENT_REQUIRED')
     }
-    const expiresAt = registration.content.endsAt
-      ?? (registration.content.startsAt ? new Date(registration.content.startsAt.getTime() + 86_400_000) : new Date(Date.now() + 30 * 86_400_000))
+    const expiresAt = eventTicketExpiresAt(registration.content, new Date(Date.now() + 30 * 86_400_000))
+    if (!expiresAt) throw new AppError('QR тасалбарын хугацааг тодорхойлж чадсангүй.', 422, 'EVENT_TICKET_EXPIRY_MISSING')
     if (expiresAt <= new Date()) {
       throw new AppError('Арга хэмжээ дууссан тул QR тасалбарын хугацаа дууссан байна.', 410, 'EVENT_TICKET_EXPIRED')
     }

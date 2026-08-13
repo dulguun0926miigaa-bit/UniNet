@@ -9,6 +9,7 @@ import { PlatformAdminManagementPage, UniversityMembershipPage } from "../member
 import HttpErrorState from "../errors/HttpErrorState.jsx";
 import { errorScreenStatus, mongolianErrorMessage } from "../errors/errorMessages.js";
 import StyledSelect from "../ui/StyledSelect.jsx";
+import { startQrCameraScanner } from "./qrCameraScanner.js";
 
 const roleConfig = {
   STAFF: { base: "/staff", routes: staffRoutes, title: "Staff Dashboard", permission: "CREATE_CONTENT" },
@@ -206,34 +207,14 @@ function EventQrApprovalScanner({ event, onToast }) {
   useEffect(() => {
     if (!cameraOpen) return undefined;
     let active = true;
-    let detecting = false;
-    let interval;
-    let stream;
-    let videoElement;
+    let scanner;
 
     const start = async () => {
       try {
-        if (!navigator.mediaDevices?.getUserMedia) throw new Error("Энэ browser camera access дэмжихгүй байна.");
-        if (!("BarcodeDetector" in window)) throw new Error("Энэ browser QR camera scanner дэмжихгүй байна. Chrome эсвэл Edge-ийн шинэ хувилбар ашиглана уу.");
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
-        if (!active || !videoRef.current) {
-          stream.getTracks().forEach(track => track.stop());
-          return;
-        }
-        videoElement = videoRef.current;
-        videoElement.srcObject = stream;
-        await videoElement.play();
-        const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
-        interval = window.setInterval(async () => {
-          if (!active || detecting || processingRef.current || !videoElement || videoElement.readyState < 2) return;
-          detecting = true;
-          try {
-            const codes = await detector.detect(videoElement);
-            const value = codes.find(code => code.rawValue)?.rawValue?.trim();
-            if (value) await approveTicket(value);
-          } catch { /* Дараагийн camera frame дээр дахин оролдоно. */ }
-          finally { detecting = false; }
-        }, 300);
+        scanner = await startQrCameraScanner(videoRef.current, value => {
+          if (active && !processingRef.current) approveTicket(value);
+        });
+        if (!active) scanner.stop();
       } catch (reason) {
         if (!active) return;
         setCameraError(reason.message || "Камер нээж чадсангүй. Camera permission-ээ шалгана уу.");
@@ -244,9 +225,7 @@ function EventQrApprovalScanner({ event, onToast }) {
     start();
     return () => {
       active = false;
-      window.clearInterval(interval);
-      stream?.getTracks().forEach(track => track.stop());
-      if (videoElement) videoElement.srcObject = null;
+      scanner?.stop();
     };
   }, [approveTicket, cameraOpen]);
 
@@ -1099,30 +1078,18 @@ function AttendanceScanner({ data, user, onToast, onScanned }) {
   useEffect(() => {
     if (!cameraOpen) return undefined;
     let active = true;
-    let stream;
-    let interval;
+    let scanner;
     const start = async () => {
       try {
-        if (!navigator.mediaDevices?.getUserMedia) throw new Error("Энэ browser camera access дэмжихгүй байна.");
-        if (!("BarcodeDetector" in window)) throw new Error("Энэ browser QR camera scanner дэмжихгүй байна. Chrome/Edge ашиглах эсвэл token талбарт scanner-аар уншуулна уу.");
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
-        if (!active || !videoRef.current) return;
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
-        interval = window.setInterval(async () => {
-          if (!active || !videoRef.current || videoRef.current.readyState < 2) return;
-          try {
-            const codes = await detector.detect(videoRef.current);
-            const value = codes.find(code => code.rawValue)?.rawValue;
-            if (value) {
-              setTicket(value);
-              setCameraOpen(false);
-              onToast("QR тасалбар уншигдлаа. Event-ээ шалгаад ирц бүртгэнэ үү.");
-            }
-          } catch { /* The next frame retries. */ }
-        }, 350);
+        scanner = await startQrCameraScanner(videoRef.current, value => {
+          if (!active) return;
+          setTicket(value);
+          setCameraOpen(false);
+          onToast("QR тасалбар уншигдлаа. Event-ээ шалгаад ирц бүртгэнэ үү.");
+        });
+        if (!active) scanner.stop();
       } catch (reason) {
+        if (!active) return;
         setCameraError(reason.message || "Камер нээж чадсангүй.");
         setCameraOpen(false);
       }
@@ -1130,9 +1097,7 @@ function AttendanceScanner({ data, user, onToast, onScanned }) {
     start();
     return () => {
       active = false;
-      window.clearInterval(interval);
-      stream?.getTracks().forEach(track => track.stop());
-      if (videoRef.current) videoRef.current.srcObject = null;
+      scanner?.stop();
     };
   }, [cameraOpen, onToast]);
 

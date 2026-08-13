@@ -17,10 +17,17 @@ import { authAccountLimiter, authChallengeLimiter, authIpLimiter, registrationAc
 const router = Router()
 const context = (req) => ({ ipAddress: req.ip, userAgent: req.get('user-agent') })
 const refreshCookieName = 'uninet.refresh'
+const cookieSite = value => {
+  const url = new URL(value)
+  return `${url.protocol}//${url.hostname}`
+}
+const sameSiteDeployment = cookieSite(env.APP_URL) === cookieSite(env.GOOGLE_OAUTH_REDIRECT_URI)
+const secureCookies = env.NODE_ENV === 'production' || new URL(env.GOOGLE_OAUTH_REDIRECT_URI).protocol === 'https:'
+/** @type {import('express').CookieOptions} */
 const refreshCookieOptions = {
   httpOnly: true,
-  secure: true,
-  sameSite: 'none',
+  secure: secureCookies,
+  sameSite: sameSiteDeployment ? 'strict' : 'none',
   path: '/api/auth',
 }
 
@@ -54,10 +61,13 @@ const oauthStateCookie = 'uninet.oauth.state'
 const oauthVerifierCookie = 'uninet.oauth.verifier'
 const oauthPendingCookie = 'uninet.oauth.pending'
 const oauthMfaCookie = 'uninet.oauth.mfa'
+/** @type {import('express').CookieOptions} */
 const oauthCookieOptions = {
   httpOnly: true,
-  secure: true,
-  sameSite: 'none',
+  secure: secureCookies,
+  // OAuth returns from a cross-site Google navigation, so these short-lived
+  // state cookies must be Lax rather than Strict.
+  sameSite: 'lax',
   path: '/api/auth/google',
   maxAge: 10 * 60 * 1000,
 }

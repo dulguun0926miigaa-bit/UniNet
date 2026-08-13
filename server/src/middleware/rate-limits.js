@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 import { createRedisRateLimitStore } from '../lib/redis.js'
+import { env } from '../config/env.js'
 
 const ipKey = req => `ip:${ipKeyGenerator(req.ip || 'unknown')}`
 const authenticatedOrIpKey = req => req.auth?.user?.id ? `user:${req.auth.user.id}` : ipKey(req)
@@ -16,13 +17,14 @@ const challengeOrIpKey = req => {
   return `challenge:${createHash('sha256').update(token).digest('hex')}`
 }
 
-export function createApiLimiter({ limit, windowMs, code, message, skip = () => false, keyGenerator = authenticatedOrIpKey }) {
+export function createApiLimiter({ limit, windowMs, code, message, skip = () => false, keyGenerator = authenticatedOrIpKey, skipSuccessfulRequests = false }) {
   return rateLimit({
     windowMs,
     limit,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
     skip,
+    skipSuccessfulRequests,
     keyGenerator,
     store: createRedisRateLimitStore(code.toLowerCase()),
     passOnStoreError: false,
@@ -68,18 +70,20 @@ export const registrationAccountLimiter = createApiLimiter({
 
 export const authIpLimiter = createApiLimiter({
   windowMs: fifteenMinutes,
-  limit: 60,
+  limit: env.NODE_ENV === 'production' ? 120 : 300,
   code: 'AUTH_IP_RATE_LIMITED',
   message: 'Энэ сүлжээнээс хэт олон authentication хүсэлт ирлээ. Түр хүлээнэ үү.',
   keyGenerator: ipKey,
+  skipSuccessfulRequests: true,
 })
 
 export const authAccountLimiter = createApiLimiter({
   windowMs: fifteenMinutes,
-  limit: 10,
+  limit: env.NODE_ENV === 'production' ? 20 : 50,
   code: 'AUTH_ACCOUNT_RATE_LIMITED',
   message: 'Энэ account-д хэт олон authentication хүсэлт ирлээ. Түр хүлээнэ үү.',
   keyGenerator: accountOrIpKey,
+  skipSuccessfulRequests: true,
 })
 
 

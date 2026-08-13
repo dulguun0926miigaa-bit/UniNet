@@ -1,6 +1,6 @@
 import { mongolianErrorMessage } from "../errors/errorMessages.js";
 
-export const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:4000/api").replace(/\/$/, "");
+export const API_URL = (import.meta.env.VITE_API_URL || "/api").replace(/\/$/, "");
 const DEFAULT_TIMEOUT_MS = 15000;
 
 let accessToken = null;
@@ -10,7 +10,7 @@ const inflightGetRequests = new Map();
 const responseCache = new Map();
 
 function wait(ms) {
-  return new Promise(resolve => window.setTimeout(resolve, ms));
+  return new Promise(resolve => globalThis.setTimeout(resolve, ms));
 }
 
 export class ApiError extends Error {

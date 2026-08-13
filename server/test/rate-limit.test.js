@@ -26,6 +26,27 @@ describe('API mutation rate limiting', () => {
     })
     expect(limited.headers['ratelimit-policy']).toBeTruthy()
   })
+
+  it('does not count successful authentication responses as failed attempts', async () => {
+    const app = express()
+    app.use(express.json())
+    const limiter = createApiLimiter({
+      windowMs: 60_000,
+      limit: 2,
+      code: 'AUTH_TEST_RATE_LIMITED',
+      message: 'Too many failed authentication attempts.',
+      skipSuccessfulRequests: true,
+    })
+    app.post('/login', limiter, (req, res) => res.status(req.body.fail ? 401 : 200).json({ ok: !req.body.fail }))
+
+    for (let index = 0; index < 5; index += 1) {
+      expect((await request(app).post('/login').send({ fail: false })).status).toBe(200)
+    }
+    expect((await request(app).post('/login').send({ fail: true })).status).toBe(401)
+    expect((await request(app).post('/login').send({ fail: true })).status).toBe(401)
+    expect((await request(app).post('/login').send({ fail: true })).status).toBe(429)
+  })
+
   it('limits repeated registration attempts for the same normalized email', async () => {
     const app = express()
     app.use(express.json())

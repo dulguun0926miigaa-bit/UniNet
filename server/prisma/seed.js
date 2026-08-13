@@ -492,6 +492,7 @@ async function main() {
           }
         }
       }
+
     }, {
       maxWait: 10000,
       timeout: 60000,
@@ -592,6 +593,26 @@ async function main() {
       console.info(`  ${item.shortName}: admin@${item.officialDomain}, staff@${item.officialDomain}, student@${item.officialDomain}`)
     }
     console.info(`  Platform: ${configuredSuperAdminEmail}`)
+  }
+
+  // Prefer the explicitly requested production address; local/demo databases
+  // use the repository's deterministic .edu.mn Staff identity.
+  const requestedGoogleStaff = await prisma.user.findUnique({ where: { normalizedEmail: 'staff@num.edu.com' } })
+    ?? (process.env.NODE_ENV !== 'production'
+      ? await prisma.user.findUnique({ where: { normalizedEmail: 'staff@num.edu.mn' } })
+      : null)
+  if (requestedGoogleStaff?.role === UserRole.STAFF) {
+    await prisma.user.updateMany({
+      where: {
+        id: { not: requestedGoogleStaff.id },
+        gmail: 'batzogsoolb@gmail.com',
+      },
+      data: { gmail: null },
+    })
+    await prisma.user.update({
+      where: { id: requestedGoogleStaff.id },
+      data: { gmail: 'batzogsoolb@gmail.com' },
+    })
   }
 }
 
