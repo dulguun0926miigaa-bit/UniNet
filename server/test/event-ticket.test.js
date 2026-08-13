@@ -1,42 +1,36 @@
-import { describe, expect, it, vi } from 'vitest'
-import { createEventTicket, verifyEventTicket } from '../src/tickets/event-ticket.js'
+import { describe, expect, it } from 'vitest'
+import { createEventTicket, EVENT_TICKET_PREFIX, hashEventTicket } from '../src/tickets/event-ticket.js'
 
-const source = {
-  registrationId: '11111111-1111-4111-8111-111111111111',
-  contentId: '22222222-2222-4222-8222-222222222222',
-  userId: '33333333-3333-4333-8333-333333333333',
-  registrationCode: 'UNI-1234567890ABCDEF1234567890ABCDEF',
-}
+const firstRegistrationId = '11111111-1111-4111-8111-111111111111'
+const secondRegistrationId = '22222222-2222-4222-8222-222222222222'
 
-describe('event QR ticket signatures', () => {
-  it('round-trips a signed, time-bounded ticket', () => {
-    const token = createEventTicket({ ...source, expiresAt: new Date(Date.now() + 60_000) })
-    expect(verifyEventTicket(token)).toMatchObject(source)
+describe('database-backed event QR tokens', () => {
+  it('returns the same opaque QR token for repeated requests for one registration', () => {
+    const first = createEventTicket({ registrationId: firstRegistrationId })
+    const second = createEventTicket({ registrationId: firstRegistrationId })
+
+    expect(second).toBe(first)
+    expect(first).toMatch(new RegExp(`^${EVENT_TICKET_PREFIX}\\.[A-Za-z0-9_-]{43}$`))
+    expect(first).not.toContain(firstRegistrationId)
   })
 
-  it('issues a unique QR token on every ticket request', () => {
-    const expiresAt = new Date(Date.now() + 60_000)
-    const first = createEventTicket({ ...source, expiresAt })
-    const second = createEventTicket({ ...source, expiresAt })
-    expect(second).not.toBe(first)
-    expect(verifyEventTicket(second).jti).not.toBe(verifyEventTicket(first).jti)
+  it('creates a different token for a different registration', () => {
+    expect(createEventTicket({ registrationId: secondRegistrationId }))
+      .not.toBe(createEventTicket({ registrationId: firstRegistrationId }))
   })
 
-  it('rejects payload and signature tampering', () => {
-    const token = createEventTicket({ ...source, expiresAt: new Date(Date.now() + 60_000) })
-    const [payload, signature] = token.split('.')
-    const replacement = payload.endsWith('A') ? 'B' : 'A'
-    expect(() => verifyEventTicket(`${payload.slice(0, -1)}${replacement}.${signature}`)).toThrowError(expect.objectContaining({ code: 'EVENT_TICKET_SIGNATURE_INVALID' }))
-    const signatureReplacement = signature.endsWith('A') ? 'B' : 'A'
-    expect(() => verifyEventTicket(`${payload}.${signature.slice(0, -1)}${signatureReplacement}`)).toThrowError(expect.objectContaining({ code: 'EVENT_TICKET_SIGNATURE_INVALID' }))
+  it('hashes the scanned token to a stable SHA-256 database key', () => {
+    const token = createEventTicket({ registrationId: firstRegistrationId })
+    const tokenHash = hashEventTicket(token)
+
+    expect(tokenHash).toMatch(/^[a-f0-9]{64}$/)
+    expect(hashEventTicket(token)).toBe(tokenHash)
+    expect(tokenHash).not.toContain(token)
   })
 
-  it('rejects an expired ticket', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-07-27T00:00:00Z'))
-    const token = createEventTicket({ ...source, expiresAt: new Date('2026-07-27T00:01:00Z') })
-    vi.setSystemTime(new Date('2026-07-27T00:02:00Z'))
-    expect(() => verifyEventTicket(token)).toThrowError(expect.objectContaining({ code: 'EVENT_TICKET_EXPIRED' }))
-    vi.useRealTimers()
+  it('rejects random and non-UniNet QR values before lookup', () => {
+    for (const token of ['https://example.com/random-qr', 'external-ticket.' + 'x'.repeat(43), '', null]) {
+      expect(() => hashEventTicket(token)).toThrowError(expect.objectContaining({ code: 'EVENT_TICKET_INVALID' }))
+    }
   })
 })

@@ -5,13 +5,14 @@ import { prisma } from '../lib/prisma.js'
 import { authenticate, requireRole } from '../middleware/authenticate.js'
 import { AppError } from '../utils/app-error.js'
 import { operationsMutationLimiter } from '../middleware/rate-limits.js'
-import { verifyEventTicket } from '../tickets/event-ticket.js'
+import { hashEventTicket } from '../tickets/event-ticket.js'
 import { requireIdempotency } from '../middleware/idempotency.js'
 import { createNotification, createNotifications } from '../notifications/notification.service.js'
 import { universityService } from '../universities/university.service.js'
 import { checkRedis, redisClient } from '../lib/redis.js'
 import os from 'node:os'
 import { assertApplicationTransition, assertManagedContentAccess, managedContentScope } from './workflow.policy.js'
+import { eventTicketExpiresAt } from '../utils/event-expiry.js'
 import {
   assertContentManagement,
   assertPermission,
@@ -72,7 +73,7 @@ const universityStatusInput = z.object({
   status: z.enum(['ACTIVE', 'SUSPENDED', 'INACTIVE']),
   reason: z.string().trim().min(3).max(500).optional(),
 }).strict()
-const attendanceScanInput = z.object({ ticket: z.string().trim().min(100).max(4096) }).strict()
+const attendanceScanInput = z.object({ ticket: z.string().trim().min(1).max(256) }).strict()
 
 const dateOnly = value => value ? value.toISOString().slice(0, 10).replaceAll('-', '.') : '—'
 const actorName = actor => [actor?.studentProfile?.firstName ?? actor?.staffProfile?.firstName, actor?.studentProfile?.lastName ?? actor?.staffProfile?.lastName].filter(Boolean).join(' ') || actor?.email || 'System'
@@ -523,26 +524,31 @@ router.post('/events/:id/attendance/scan', requireIdempotency, async (req, res, 
     if (!managedEvent) throw new AppError('Арга хэмжээ олдсонгүй.', 404, 'EVENT_NOT_FOUND')
     if (managedEvent.type !== 'EVENT') throw new AppError('QR ирц зөвхөн арга хэмжээнд хамаарна.', 422, 'NOT_AN_EVENT')
     assertManagedContentAccess(req.auth.user, managedEvent, 'canManageRegistrations')
-    const payload = verifyEventTicket(ticket)
-    if (payload.contentId !== contentId) {
-      throw new AppError('QR тасалбар өөр арга хэмжээнд хамаарч байна.', 409, 'EVENT_TICKET_CONTENT_MISMATCH')
+    if (managedEvent.pricingType !== 'PAID') {
+      throw new AppError('Ирцийн QR scan зөвхөн төлбөртэй арга хэмжээнд ажиллана.', 409, 'EVENT_PAID_TICKET_REQUIRED')
     }
+    const ticketTokenHash = hashEventTicket(ticket)
     const registration = await prisma.eventRegistration.findUnique({
-      where: { id: payload.registrationId },
+      where: { ticketTokenHash },
       include: {
         content: true,
         payment: true,
         user: { include: { studentProfile: true, staffProfile: true, university: { select: { shortName: true } } } },
       },
     })
-    if (!registration) throw new AppError('Тасалбарт харгалзах бүртгэл олдсонгүй.', 404, 'EVENT_REGISTRATION_NOT_FOUND')
+    if (!registration) {
+      throw new AppError('Энэ QR манай сайтаас үүссэн төлбөртэй тасалбар биш байна.', 422, 'EVENT_TICKET_NOT_RECOGNIZED')
+    }
+    if (registration.contentId !== contentId) {
+      throw new AppError('QR тасалбар өөр арга хэмжээнд хамаарч байна.', 409, 'EVENT_TICKET_CONTENT_MISMATCH')
+    }
     assertTenant(req.auth.user, registration.content.universityId)
-    if (
-      registration.contentId !== payload.contentId
-      || registration.userId !== payload.userId
-      || registration.registrationCode !== payload.registrationCode
-    ) {
-      throw new AppError('QR тасалбарын бүртгэлийн мэдээлэл таарахгүй байна.', 409, 'EVENT_TICKET_REGISTRATION_MISMATCH')
+    if (registration.content.pricingType !== 'PAID' || registration.payment?.status !== 'PAID') {
+      throw new AppError('Зөвхөн төлбөр нь баталгаажсан QR тасалбараар ирц бүртгэнэ.', 409, 'EVENT_PAYMENT_REQUIRED')
+    }
+    const ticketExpiresAt = eventTicketExpiresAt(registration.content)
+    if (!ticketExpiresAt || ticketExpiresAt <= new Date()) {
+      throw new AppError('QR тасалбарын хугацаа дууссан байна.', 410, 'EVENT_TICKET_EXPIRED')
     }
     if (registration.status === 'ATTENDED') {
       return res.json({
@@ -561,13 +567,15 @@ router.post('/events/:id/attendance/scan', requireIdempotency, async (req, res, 
     if (registration.status !== 'CONFIRMED') {
       throw new AppError('Зөвхөн баталгаажсан бүртгэлийн ирцийг бүртгэнэ.', 409, 'ATTENDANCE_STATUS_INVALID')
     }
-    if (registration.content.pricingType === 'PAID' && registration.payment?.status !== 'PAID') {
-      throw new AppError('Энэ төлбөртэй тасалбарын Stripe төлбөр баталгаажаагүй байна.', 409, 'EVENT_PAYMENT_REQUIRED')
-    }
     const attendedAt = new Date()
     const outcome = await prisma.$transaction(async tx => {
       const changed = await tx.eventRegistration.updateMany({
-        where: { id: registration.id, status: 'CONFIRMED' },
+        where: {
+          id: registration.id,
+          status: 'CONFIRMED',
+          ticketTokenHash,
+          payment: { is: { status: 'PAID' } },
+        },
         data: { status: 'ATTENDED', attendedAt },
       })
       if (!changed.count) {
@@ -581,7 +589,7 @@ router.post('/events/:id/attendance/scan', requireIdempotency, async (req, res, 
         resourceId: registration.id,
         resourceName: registration.content.title,
         previousData: { status: registration.status },
-        nextData: { status: 'ATTENDED', attendedAt: attendedAt.toISOString(), ticketId: payload.jti },
+        nextData: { status: 'ATTENDED', attendedAt: attendedAt.toISOString(), ticketHashPrefix: ticketTokenHash.slice(0, 16) },
       }, tx)
       await createNotification(tx, {
           userId: registration.userId,

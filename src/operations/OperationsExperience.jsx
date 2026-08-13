@@ -238,7 +238,7 @@ function EventQrApprovalScanner({ event, onToast }) {
 
   return <div className="mt-4 overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 p-3 text-white">
     <div className="flex flex-wrap items-center justify-between gap-3 px-1 pb-3">
-      <div><p className="text-[10px] font-bold uppercase tracking-wider text-blue-300">Secure QR approval</p><p className="mt-1 text-xs text-slate-300">Камер UniNet-ийн signed ticket QR-г автоматаар шалгана.</p></div>
+      <div><p className="text-[10px] font-bold uppercase tracking-wider text-blue-300">Secure QR approval</p><p className="mt-1 text-xs text-slate-300">Камер UniNet-ийн DB-д hash-аар бүртгэгдсэн төлбөртэй QR-г уншмагц ирцийг бүртгэнэ.</p></div>
       {!cameraOpen && !scanning && <button type="button" onClick={restart} className="inline-flex items-center gap-2 rounded-lg border border-slate-600 px-3 py-2 text-[10px] font-bold text-white"><RotateCcw className="h-3.5 w-3.5" />Дахин QR шалгах</button>}
     </div>
     {cameraOpen && <><video ref={videoRef} muted playsInline className="mx-auto max-h-[420px] w-full rounded-xl bg-black object-cover" /><p className="mt-2 text-center text-[10px] text-slate-300">Camera permission зөвшөөрөөд Student-ийн QR-г хүрээнд байрлуулна.</p></>}
@@ -255,6 +255,7 @@ function ContentDescriptionPanel({ content, user, canManageRegistrations, onToas
   const [scannerOpen, setScannerOpen] = useState(false);
   const canScanOwnEvent = user.role === "STAFF"
     && content.type === "EVENT"
+    && content.pricingType === "PAID"
     && content.status === "PUBLISHED"
     && content.createdById === user.id
     && canManageRegistrations;
@@ -1064,6 +1065,7 @@ function MonitoringPage({ data }) {
 
 function AttendanceScanner({ data, user, onToast, onScanned }) {
   const events = (data.staffContent || []).filter(item => item.type === "EVENT"
+    && item.pricingType === "PAID"
     && ["PUBLISHED", "ACTIVE"].includes(item.status)
     && (user.role !== "STAFF" || item.createdById === user.id));
   const [eventId, setEventId] = useState("");
@@ -1073,7 +1075,32 @@ function AttendanceScanner({ data, user, onToast, onScanned }) {
   const [cameraError, setCameraError] = useState("");
   const [result, setResult] = useState(null);
   const videoRef = useRef(null);
+  const processingRef = useRef(false);
   const selectedEventId = eventId || events[0]?.id || "";
+
+  const recordAttendance = useCallback(async (eventIdToScan, rawTicket) => {
+    const scannedTicket = rawTicket.trim();
+    if (processingRef.current || !eventIdToScan || !scannedTicket) return;
+    processingRef.current = true;
+    setScanning(true);
+    setResult(null);
+    setCameraError("");
+    setCameraOpen(false);
+    try {
+      const attendance = await operationsService.scanAttendance(eventIdToScan, scannedTicket);
+      setResult(attendance);
+      setTicket("");
+      await onScanned();
+      onToast(attendance.alreadyRecorded ? "Already approved — энэ QR тасалбар өмнө нь баталгаажсан байна." : "QR уншигдмагц ирц амжилттай бүртгэгдлээ.");
+    } catch (reason) {
+      const message = reason.message || "Энэ QR манай сайтаас үүссэн, төлбөр баталгаажсан тасалбар биш байна.";
+      setCameraError(message);
+      onToast(message);
+    } finally {
+      setScanning(false);
+      processingRef.current = false;
+    }
+  }, [onScanned, onToast]);
 
   useEffect(() => {
     if (!cameraOpen) return undefined;
@@ -1082,10 +1109,9 @@ function AttendanceScanner({ data, user, onToast, onScanned }) {
     const start = async () => {
       try {
         scanner = await startQrCameraScanner(videoRef.current, value => {
-          if (!active) return;
+          if (!active || processingRef.current) return;
           setTicket(value);
-          setCameraOpen(false);
-          onToast("QR тасалбар уншигдлаа. Event-ээ шалгаад ирц бүртгэнэ үү.");
+          recordAttendance(selectedEventId, value);
         });
         if (!active) scanner.stop();
       } catch (reason) {
@@ -1099,38 +1125,26 @@ function AttendanceScanner({ data, user, onToast, onScanned }) {
       active = false;
       scanner?.stop();
     };
-  }, [cameraOpen, onToast]);
+  }, [cameraOpen, recordAttendance, selectedEventId]);
 
   const submit = async event => {
     event.preventDefault();
     if (!selectedEventId || !ticket.trim()) return;
-    setScanning(true);
-    setResult(null);
-    try {
-      const attendance = await operationsService.scanAttendance(selectedEventId, ticket.trim());
-      setResult(attendance);
-      setTicket("");
-      await onScanned();
-      onToast(attendance.alreadyRecorded ? "Already approved — энэ QR тасалбар өмнө нь баталгаажсан байна." : "QR тасалбар APPROVED болж, ирц нэг удаа бүртгэгдлээ.");
-    } catch (reason) {
-      onToast(reason.message || "QR тасалбарыг баталгаажуулж чадсангүй.");
-    } finally {
-      setScanning(false);
-    }
+    await recordAttendance(selectedEventId, ticket);
   };
 
   return <section className="mb-6 rounded-2xl border border-blue-100 bg-gradient-to-br from-white to-blue-50 p-5 shadow-sm">
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Secure attendance</p><h2 className="font-display mt-1 text-lg font-bold text-slate-900">QR тасалбар уншуулах</h2><p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">Камер, USB QR scanner эсвэл token ашиглана. Сервер гарын үсэг, хугацаа, event, tenant болон registration төлөвийг шалгана.</p></div>
+      <div><p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Secure attendance</p><h2 className="font-display mt-1 text-lg font-bold text-slate-900">Төлбөртэй QR тасалбар уншуулах</h2><p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">Камераар QR уншигдмагц сервер token-ийг hashлаад DB-д хадгалсан төлбөр баталгаажсан тасалбартай тулган, ирцийг шууд бүртгэнэ.</p></div>
       <div className="flex items-center gap-2">{result && <Badge value={result.approvalStatus || (result.alreadyRecorded ? "ALREADY_APPROVED" : "APPROVED")} />}{events.length > 0 && <button type="button" onClick={() => { setCameraError(""); setCameraOpen(value => !value); }} className="rounded-xl border border-blue-200 bg-white px-4 py-2 text-xs font-bold text-blue-700">{cameraOpen ? "Камер хаах" : "Камераар scan хийх"}</button>}</div>
     </div>
     {cameraError && <div role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">{cameraError}</div>}
-    {cameraOpen && <div className="mt-5 overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 p-3"><video ref={videoRef} muted playsInline className="mx-auto max-h-[420px] w-full rounded-xl object-cover" /><p className="mt-2 text-center text-[10px] text-slate-300">Student-ийн signed ticket QR-ийг хүрээнд байрлуулна.</p></div>}
+    {cameraOpen && <div className="mt-5 overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 p-3"><video ref={videoRef} muted playsInline className="mx-auto max-h-[420px] w-full rounded-xl object-cover" /><p className="mt-2 text-center text-[10px] text-slate-300">Student-ийн төлбөр баталгаажсан UniNet QR-г хүрээнд байрлуулна.</p></div>}
     {events.length ? <form onSubmit={submit} className="mt-5 grid gap-3 lg:grid-cols-[minmax(220px,0.4fr)_1fr_auto]">
       <StyledSelect label="Арга хэмжээ" value={selectedEventId} onChange={setEventId} options={events.map(item => ({ value: item.id, label: item.title }))} className="w-full" />
       <label className="text-xs font-bold text-slate-700">QR token<input value={ticket} onChange={event => setTicket(event.target.value)} autoComplete="off" spellCheck="false" placeholder="Scanner-аар уншуулна уу" className="mt-2 block w-full rounded-xl border border-slate-200 bg-white px-3 py-3 font-mono text-xs focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100" /></label>
       <button type="submit" disabled={scanning || !ticket.trim()} className="self-end rounded-xl bg-slate-900 px-5 py-3 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{scanning ? "Шалгаж байна..." : "Ирц бүртгэх"}</button>
-    </form> : <p className="mt-5 rounded-xl border border-dashed border-slate-200 bg-white p-4 text-xs text-slate-500">Ирц бүртгэх нийтлэгдсэн арга хэмжээ одоогоор алга.</p>}
+    </form> : <p className="mt-5 rounded-xl border border-dashed border-slate-200 bg-white p-4 text-xs text-slate-500">Ирц scan хийх нийтлэгдсэн төлбөртэй арга хэмжээ одоогоор алга.</p>}
     {result && <div aria-live="polite" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-800"><b>{result.student}</b> · {result.university} · {result.event}<span className="ml-2">{result.attendedAt ? new Intl.DateTimeFormat("mn-MN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(result.attendedAt)) : ""}</span></div>}
   </section>;
 }

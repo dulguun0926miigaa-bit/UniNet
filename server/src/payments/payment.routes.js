@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { prisma } from '../lib/prisma.js'
 import { createNotification } from '../notifications/notification.service.js'
 import { verifyStripeWebhook } from './stripe.service.js'
+import { createEventTicket, hashEventTicket } from '../tickets/event-ticket.js'
 
 const router = Router()
 
@@ -35,13 +36,15 @@ async function completeCheckout(session) {
     const sessionCurrency = String(session.currency || '').toUpperCase()
     if (Number(session.amount_total) !== expectedMinorAmount || sessionCurrency !== payment.currency.toUpperCase()) return
     const providerPaymentId = typeof session.payment_intent === 'string' ? session.payment_intent : null
+    const paidAt = new Date()
+    const ticketTokenHash = hashEventTicket(createEventTicket({ registrationId: payment.registrationId }))
     await tx.payment.update({
       where: { id: payment.id },
-      data: { status: 'PAID', providerPaymentId, paidAt: new Date() },
+      data: { status: 'PAID', providerPaymentId, paidAt },
     })
     await tx.eventRegistration.updateMany({
       where: { id: payment.registrationId, status: 'PAYMENT_PENDING' },
-      data: { status: 'CONFIRMED', cancelledAt: null },
+      data: { status: 'CONFIRMED', cancelledAt: null, ticketTokenHash, ticketIssuedAt: paidAt },
     })
     await createNotification(tx, {
       userId: payment.userId,
@@ -76,7 +79,10 @@ async function refundPayment(charge) {
     const payment = await tx.payment.findUnique({ where: { providerPaymentId }, include: { content: true } })
     if (!payment || payment.status === 'REFUNDED') return
     await tx.payment.update({ where: { id: payment.id }, data: { status: 'REFUNDED', refundedAt: new Date() } })
-    await tx.eventRegistration.updateMany({ where: { id: payment.registrationId }, data: { status: 'CANCELLED', cancelledAt: new Date() } })
+    await tx.eventRegistration.updateMany({
+      where: { id: payment.registrationId },
+      data: { status: 'CANCELLED', cancelledAt: new Date(), ticketTokenHash: null, ticketIssuedAt: null },
+    })
     await createNotification(tx, {
       userId: payment.userId,
       universityId: payment.content.universityId,

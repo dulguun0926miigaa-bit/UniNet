@@ -246,7 +246,7 @@ function HomePage({ data, savedIds, navigate, onSave, onView, onAction, onReadNo
               <p className="mt-2 text-xs text-slate-500">{item.university} · {item.date} {item.time}</p>
               <p className="mt-1 text-xs text-slate-400">{item.location}{daysUntil(item.date) != null ? ` · ${daysUntil(item.date)} хоног үлдсэн` : ""}</p>
               <div className="mt-5 flex gap-2">
-                <button type="button" onClick={() => onView({ ...item, modalType: "QR" })} className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white">QR тасалбар</button>
+                {item.pricingType === "PAID" && item.paymentStatus === "PAID" && <button type="button" onClick={() => onView({ ...item, modalType: "QR" })} className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white">QR тасалбар</button>}
                 <button type="button" onClick={() => navigate(`/student/content/${contentIdOf(item)}`)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold">Дэлгэрэнгүй</button>
               </div>
             </div>
@@ -373,7 +373,7 @@ function RegistrationsPage({ registrations, onQr, onPay, onCancel, onCalendar })
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div><StatusBadge value={item.status} /><h2 className="font-display mt-3 text-lg font-bold">{item.title}</h2><p className="mt-2 text-xs text-slate-500">{item.university} · {item.date} {item.time} · {item.location}</p></div>
               <div className="flex flex-wrap gap-2">
-                {(["CONFIRMED", "ATTENDED"].includes(item.status) && (item.pricingType !== "PAID" || item.paymentStatus === "PAID"))
+                {(["CONFIRMED", "ATTENDED"].includes(item.status) && item.pricingType === "PAID" && item.paymentStatus === "PAID")
                   ? <button type="button" onClick={() => onQr(item)} className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white">QR тасалбар</button>
                   : item.pricingType === "PAID" && ["PAYMENT_PENDING", "CONFIRMED"].includes(item.status)
                     ? <button type="button" onClick={() => onPay(item)} className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white">{Number(item.priceAmount || 0).toLocaleString()} ₮ төлөх</button>

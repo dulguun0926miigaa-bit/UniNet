@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import request from 'supertest'
 import { app } from '../src/app.js'
 import { prisma } from '../src/lib/prisma.js'
+import { hashEventTicket } from '../src/tickets/event-ticket.js'
 import {
   assertDedicatedTestDatabase,
   cleanupIntegrationFixtures,
@@ -67,14 +68,33 @@ describe('Phase 5D registration and application management', () => {
     expect(await prisma.notification.count({ where: { userId: student.user.id, type: 'EVENT_ATTENDANCE' } })).toBe(1)
   })
 
-  it('allows only the event-owner Staff to approve a signed QR exactly once', async () => {
+  it('allows only the event-owner Staff to scan a DB-hashed paid QR exactly once', async () => {
     const university = await createUniversity('workflow-qr-approval')
     const [owner, otherStaff, student] = await Promise.all([
       createAuthenticatedUser({ role: 'STAFF', university, label: 'qr-event-owner', permissions: { canCreateContent: true, canManageRegistrations: true } }),
       createAuthenticatedUser({ role: 'STAFF', university, label: 'qr-other-staff', permissions: { canManageRegistrations: true } }),
       createAuthenticatedUser({ university, label: 'qr-student' }),
     ])
-    const event = await createContent({ university, createdBy: owner.user, type: 'EVENT', label: 'single-use-qr-event' })
+    const freeEvent = await createContent({ university, createdBy: owner.user, type: 'EVENT', label: 'free-no-qr-event' })
+    const freeRegistration = await prisma.eventRegistration.create({
+      data: {
+        userId: student.user.id,
+        contentId: freeEvent.id,
+        status: 'CONFIRMED',
+        registrationCode: `FREE-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`,
+      },
+    })
+    const freeTicket = await request(app)
+      .get(`/api/student/events/${freeEvent.id}/ticket`)
+      .set(bearer(student.token))
+      .expect(409)
+    expect(freeTicket.body.error.code).toBe('EVENT_PAID_TICKET_REQUIRED')
+
+    const event = await createContent({ university, createdBy: owner.user, type: 'EVENT', label: 'single-paid-qr-event' })
+    await prisma.content.update({
+      where: { id: event.id },
+      data: { pricingType: 'PAID', priceAmount: 25_000, currency: 'MNT' },
+    })
     const registration = await prisma.eventRegistration.create({
       data: {
         userId: student.user.id,
@@ -83,19 +103,39 @@ describe('Phase 5D registration and application management', () => {
         registrationCode: `QR-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`,
       },
     })
+    await prisma.payment.create({
+      data: {
+        userId: student.user.id,
+        contentId: event.id,
+        registrationId: registration.id,
+        provider: 'STRIPE',
+        amount: 25_000,
+        currency: 'MNT',
+        status: 'PAID',
+        paidAt: new Date(),
+      },
+    })
     const ticketResponse = await request(app)
       .get(`/api/student/events/${event.id}/ticket`)
       .set(bearer(student.token))
       .expect(200)
     const ticket = ticketResponse.body.ticket.token
+    const repeatedTicketResponse = await request(app)
+      .get(`/api/student/events/${event.id}/ticket`)
+      .set(bearer(student.token))
+      .expect(200)
+    expect(repeatedTicketResponse.body.ticket.token).toBe(ticket)
+    const persistedTicket = await prisma.eventRegistration.findUniqueOrThrow({ where: { id: registration.id } })
+    expect(persistedTicket.ticketTokenHash).toBe(hashEventTicket(ticket))
+    expect(persistedTicket).not.toHaveProperty('ticketToken')
 
-    const unsignedQr = await request(app)
+    const randomQr = await request(app)
       .post(`/api/operations/events/${event.id}/attendance/scan`)
       .set(bearer(owner.token))
-      .set('Idempotency-Key', key('unsigned-qr'))
-      .send({ ticket: `external-ticket.${'x'.repeat(120)}` })
+      .set('Idempotency-Key', key('random-qr'))
+      .send({ ticket: `uninet_evt_v1.${'x'.repeat(43)}` })
       .expect(422)
-    expect(unsignedQr.body.error.code).toBe('EVENT_TICKET_SIGNATURE_INVALID')
+    expect(randomQr.body.error.code).toBe('EVENT_TICKET_NOT_RECOGNIZED')
 
     const denied = await request(app)
       .post(`/api/operations/events/${event.id}/attendance/scan`)
@@ -132,6 +172,7 @@ describe('Phase 5D registration and application management', () => {
     })
     expect(await prisma.auditLog.count({ where: { resourceId: registration.id, action: 'EVENT_ATTENDANCE_RECORDED' } })).toBe(1)
     expect(await prisma.notification.count({ where: { userId: student.user.id, contentId: event.id, type: 'EVENT_ATTENDANCE' } })).toBe(1)
+    expect(freeRegistration.status).toBe('CONFIRMED')
   })
 
   it('enforces Staff application ownership and the review-shortlist-decision state machine', async () => {

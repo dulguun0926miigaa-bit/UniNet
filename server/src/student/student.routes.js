@@ -6,7 +6,7 @@ import { authenticate, requireRole } from '../middleware/authenticate.js'
 import { AppError } from '../utils/app-error.js'
 import { studentMutationLimiter } from '../middleware/rate-limits.js'
 import { optionalHttpUrl } from '../validation/safe-url.js'
-import { createEventTicket } from '../tickets/event-ticket.js'
+import { createEventTicket, hashEventTicket } from '../tickets/event-ticket.js'
 import { requireIdempotency } from '../middleware/idempotency.js'
 import { createNotification } from '../notifications/notification.service.js'
 import { emailService } from '../auth/email.service.js'
@@ -557,7 +557,7 @@ router.get('/events/:id/payment', async (req, res, next) => {
       include: { payment: true, content: true },
     })
     if (!registration) throw new AppError('Арга хэмжээний бүртгэл олдсонгүй.', 404, 'REGISTRATION_NOT_FOUND')
-    res.json({ payment: registration.payment ? { id: registration.payment.id, status: registration.payment.status, amount: registration.payment.amount, currency: registration.payment.currency, paidAt: registration.payment.paidAt?.toISOString() ?? null } : null, registration: { status: registration.status, ticketAvailable: registration.status === 'CONFIRMED' && (registration.content.pricingType !== 'PAID' || registration.payment?.status === 'PAID') } })
+    res.json({ payment: registration.payment ? { id: registration.payment.id, status: registration.payment.status, amount: registration.payment.amount, currency: registration.payment.currency, paidAt: registration.payment.paidAt?.toISOString() ?? null } : null, registration: { status: registration.status, ticketAvailable: registration.status === 'CONFIRMED' && registration.content.pricingType === 'PAID' && registration.payment?.status === 'PAID' } })
   } catch (error) { next(error) }
 })
 
@@ -574,7 +574,10 @@ router.get('/events/:id/ticket', async (req, res, next) => {
     if (registration.content.type !== 'EVENT') {
       throw new AppError('Энэ бүртгэл арга хэмжээнийх биш байна.', 422, 'NOT_AN_EVENT')
     }
-    if (registration.content.pricingType === 'PAID' && registration.payment?.status !== 'PAID') {
+    if (registration.content.pricingType !== 'PAID') {
+      throw new AppError('QR тасалбар зөвхөн төлбөртэй арга хэмжээнд үүснэ.', 409, 'EVENT_PAID_TICKET_REQUIRED')
+    }
+    if (registration.payment?.status !== 'PAID') {
       throw new AppError('Төлбөр баталгаажаагүй тул QR тасалбар бэлэн болоогүй байна.', 409, 'EVENT_PAYMENT_REQUIRED')
     }
     const expiresAt = eventTicketExpiresAt(registration.content, new Date(Date.now() + 30 * 86_400_000))
@@ -582,13 +585,23 @@ router.get('/events/:id/ticket', async (req, res, next) => {
     if (expiresAt <= new Date()) {
       throw new AppError('Арга хэмжээ дууссан тул QR тасалбарын хугацаа дууссан байна.', 410, 'EVENT_TICKET_EXPIRED')
     }
-    const token = createEventTicket({
-      registrationId: registration.id,
-      contentId: registration.contentId,
-      userId: registration.userId,
-      registrationCode: registration.registrationCode,
-      expiresAt,
-    })
+    const token = createEventTicket({ registrationId: registration.id })
+    const ticketTokenHash = hashEventTicket(token)
+    if (registration.ticketTokenHash && registration.ticketTokenHash !== ticketTokenHash) {
+      throw new AppError('QR тасалбарын серверийн түлхүүр өөрчлөгдсөн байна. Админтай холбогдоно уу.', 409, 'EVENT_TICKET_KEY_MISMATCH')
+    }
+    if (!registration.ticketTokenHash) {
+      const issued = await prisma.eventRegistration.updateMany({
+        where: { id: registration.id, ticketTokenHash: null, status: { in: ['CONFIRMED', 'ATTENDED'] } },
+        data: { ticketTokenHash, ticketIssuedAt: new Date() },
+      })
+      if (!issued.count) {
+        const current = await prisma.eventRegistration.findUnique({ where: { id: registration.id }, select: { ticketTokenHash: true } })
+        if (current?.ticketTokenHash !== ticketTokenHash) {
+          throw new AppError('QR тасалбарыг тогтвортой үүсгэж чадсангүй.', 409, 'EVENT_TICKET_ISSUE_CONFLICT')
+        }
+      }
+    }
     res.json({
       ticket: {
         token,
