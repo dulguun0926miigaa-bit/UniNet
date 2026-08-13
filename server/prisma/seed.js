@@ -346,6 +346,31 @@ async function main() {
           },
         },
       )
+      if (universityConfig.slug === 'muis') {
+        roleUsers.push({
+          email: 'staff@num.edu.com',
+          role: UserRole.STAFF,
+          universityId: university.id,
+          memberType: 'STAFF',
+          firstName: 'Batzogsool',
+          lastName: 'Batjargal',
+          studentId: null,
+          employeeCode: 'MUIS-GOOGLE-STAFF',
+          department: 'Карьер хөгжлийн төв',
+          major: null,
+          enrollmentYear: null,
+          graduationYear: null,
+          jobTitle: 'Staff',
+          permissions: {
+            canCreateContent: true,
+            canPublish: false,
+            canManageRegistrations: true,
+            canManageApplications: true,
+            canManageSurveys: true,
+            canViewReports: true,
+          },
+        })
+      }
     }
 
     const configuredSuperAdminEmail = (process.env.SEED_SUPER_ADMIN_EMAIL || 'superadmin@uninet.local').trim().toLowerCase()
@@ -598,9 +623,6 @@ async function main() {
   // Prefer the explicitly requested production address; local/demo databases
   // use the repository's deterministic .edu.mn Staff identity.
   const requestedGoogleStaff = await prisma.user.findUnique({ where: { normalizedEmail: 'staff@num.edu.com' } })
-    ?? (process.env.NODE_ENV !== 'production'
-      ? await prisma.user.findUnique({ where: { normalizedEmail: 'staff@num.edu.mn' } })
-      : null)
   if (requestedGoogleStaff?.role === UserRole.STAFF) {
     await prisma.user.updateMany({
       where: {

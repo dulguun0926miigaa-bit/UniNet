@@ -8,6 +8,8 @@ const CODE_MESSAGES = Object.freeze({
   GOOGLE_AUTH_FAILED: "Google нэвтрэлт амжилтгүй боллоо. Дахин эхлүүлнэ үү.",
   GOOGLE_IDENTITY_INVALID: "Google identity баталгаажуулалт хүчингүй эсвэл хугацаа дууссан байна.",
   GOOGLE_ACCOUNT_NOT_LINKED: "Энэ бүртгэл Google account-тай холбогдоогүй байна.",
+  GOOGLE_PRELINK_TARGET_NOT_FOUND: "staff@num.edu.com Staff бүртгэл database-д олдсонгүй. Role account seed эсвэл deploy account-аа шалгана уу.",
+  GOOGLE_PRELINK_TARGET_INVALID: "staff@num.edu.com бүртгэл ACTIVE Staff role-той биш байна.",
   LOCAL_PASSWORD_REQUIRED_BEFORE_UNLINK: "Google холбоос салгахаас өмнө local нууц үгтэй байх шаардлагатай.",
   UPSTREAM_CIRCUIT_OPEN: "Backend service түр хамгаалалтын горимд байна. Түр хүлээгээд дахин оролдоно уу.",
   UPSTREAM_TIMEOUT: "Backend-ийн дэд үйлчилгээ хариу өгөх хугацаа хэтэрлээ.",

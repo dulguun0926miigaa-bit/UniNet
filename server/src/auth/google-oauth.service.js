@@ -8,6 +8,7 @@ import { authRepository } from './auth.repository.js'
 import { buildPolicyAcceptanceData, requireRegistrationPolicies } from '../privacy/policy.js'
 import { prisma } from '../lib/prisma.js'
 import { CANONICAL_GOOGLE_ISSUER, validateGoogleIdentityClaims } from './google-oauth.security.js'
+import { resolveGoogleAccountPrelink } from './google-account-prelinks.js'
 import { mfaService } from './mfa.service.js'
 import { emailService } from './email.service.js'
 import { assertNotCommonBreachedPassword } from './password-security.js'
@@ -213,6 +214,28 @@ export const googleOAuthService = {
       where: { googleIssuer: identity.googleIssuer, googleId: identity.googleId },
       include: { university: true, studentProfile: true, staffProfile: true },
     })
+    if (!user) {
+      const prelinkedAccountEmail = resolveGoogleAccountPrelink(identity.gmail)
+      if (prelinkedAccountEmail) {
+        user = await prisma.user.findUnique({
+          where: { normalizedEmail: prelinkedAccountEmail },
+          include: { university: true, studentProfile: true, staffProfile: true },
+        })
+        if (!user) {
+          throw new AppError(
+            `Google account-д холбох Staff бүртгэл олдсонгүй: ${prelinkedAccountEmail}`,
+            409,
+            'GOOGLE_PRELINK_TARGET_NOT_FOUND',
+          )
+        }
+        if (user.role !== 'STAFF' || user.status !== 'ACTIVE') {
+          throw new AppError('Google account-д холбосон Staff бүртгэл идэвхгүй эсвэл role тохирохгүй байна.', 409, 'GOOGLE_PRELINK_TARGET_INVALID')
+        }
+        if (user.googleId && (user.googleId !== identity.googleId || user.googleIssuer !== identity.googleIssuer)) {
+          throw new AppError('Энэ Staff account өөр Google account-тай аль хэдийн холбогдсон байна.', 409, 'OAUTH_ACCOUNT_ALREADY_LINKED')
+        }
+      }
+    }
     if (!user) {
       const prelinkedUsers = await prisma.user.findMany({
         where: {

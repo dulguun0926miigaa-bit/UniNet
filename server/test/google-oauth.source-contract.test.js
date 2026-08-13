@@ -6,9 +6,11 @@ const routes = readFileSync(new URL('../src/auth/auth.routes.js', import.meta.ur
 const schema = readFileSync(new URL('../prisma/schema.prisma', import.meta.url), 'utf8')
 
 describe('Google OAuth account ownership source contract', () => {
-  it('does not silently link by Gmail and uses issuer plus provider subject', () => {
+  it('uses issuer plus provider subject and gates email prelinks through an explicit allowlist', () => {
     expect(service).toContain('where: { googleIssuer: identity.googleIssuer, googleId: identity.googleId }')
     expect(service).toContain('findUserByGoogleIdentity(identity.googleIssuer, identity.googleId)')
+    expect(service).toContain('resolveGoogleAccountPrelink(identity.gmail)')
+    expect(service).toContain("user.role !== 'STAFF' || user.status !== 'ACTIVE'")
     expect(schema).toMatch(/@@unique\(\[googleIssuer, googleId\]\)/)
   })
 
