@@ -11,7 +11,7 @@ import { createNotification, createNotifications } from '../notifications/notifi
 import { universityService } from '../universities/university.service.js'
 import { checkRedis, redisClient } from '../lib/redis.js'
 import os from 'node:os'
-import { assertApplicationTransition, assertManagedContentAccess } from './workflow.policy.js'
+import { assertApplicationTransition, assertManagedContentAccess, managedContentScope } from './workflow.policy.js'
 import {
   assertContentManagement,
   assertPermission,
@@ -289,7 +289,7 @@ router.get('/bootstrap', async (req, res, next) => {
         take: 500,
       }),
       canManageRegistrations ? prisma.eventRegistration.findMany({
-        where: { content: scope },
+        where: { content: { is: managedContentScope(req.auth.user, 'canManageRegistrations', ['EVENT']) } },
         include: {
           user: { include: { university: { select: { shortName: true } }, studentProfile: true } },
           content: { select: { title: true, pricingType: true, priceAmount: true, currency: true } },
@@ -383,6 +383,7 @@ router.get('/bootstrap', async (req, res, next) => {
 
     const mappedContent = /** @type {Array<Record<string, unknown>>} */ (contents.map(content => ({
       id: content.id,
+      createdById: content.createdById,
       title: content.title,
       type: content.type,
       creator: actorName(content.createdBy),
@@ -518,10 +519,10 @@ router.post('/events/:id/attendance/scan', requireIdempotency, async (req, res, 
   try {
     const contentId = uuid.parse(req.params.id)
     const { ticket } = attendanceScanInput.parse(req.body)
-    assertPermission(req.auth.user, 'canManageRegistrations', {
-      code: 'ATTENDANCE_MANAGE_FORBIDDEN',
-      message: 'Арга хэмжээний ирц бүртгэх зөвшөөрөл алга.',
-    })
+    const managedEvent = await prisma.content.findUnique({ where: { id: contentId } })
+    if (!managedEvent) throw new AppError('Арга хэмжээ олдсонгүй.', 404, 'EVENT_NOT_FOUND')
+    if (managedEvent.type !== 'EVENT') throw new AppError('QR ирц зөвхөн арга хэмжээнд хамаарна.', 422, 'NOT_AN_EVENT')
+    assertManagedContentAccess(req.auth.user, managedEvent, 'canManageRegistrations')
     const payload = verifyEventTicket(ticket)
     if (payload.contentId !== contentId) {
       throw new AppError('QR тасалбар өөр арга хэмжээнд хамаарч байна.', 409, 'EVENT_TICKET_CONTENT_MISMATCH')
@@ -552,6 +553,7 @@ router.post('/events/:id/attendance/scan', requireIdempotency, async (req, res, 
           student: actorName(registration.user),
           university: registration.user.university?.shortName || 'UniNet',
           event: registration.content.title,
+          approvalStatus: 'ALREADY_APPROVED',
           alreadyRecorded: true,
         },
       })
@@ -563,12 +565,16 @@ router.post('/events/:id/attendance/scan', requireIdempotency, async (req, res, 
       throw new AppError('Энэ төлбөртэй тасалбарын Stripe төлбөр баталгаажаагүй байна.', 409, 'EVENT_PAYMENT_REQUIRED')
     }
     const attendedAt = new Date()
-    const updated = await prisma.$transaction(async tx => {
+    const outcome = await prisma.$transaction(async tx => {
       const changed = await tx.eventRegistration.updateMany({
         where: { id: registration.id, status: 'CONFIRMED' },
         data: { status: 'ATTENDED', attendedAt },
       })
-      if (!changed.count) throw new AppError('Бүртгэлийн төлөв зэрэг өөрчлөгдсөн байна. Дахин уншуулна уу.', 409, 'ATTENDANCE_CONFLICT')
+      if (!changed.count) {
+        const current = await tx.eventRegistration.findUnique({ where: { id: registration.id } })
+        if (current?.status === 'ATTENDED') return { registration: current, alreadyRecorded: true }
+        throw new AppError('Бүртгэлийн төлөв зэрэг өөрчлөгдсөн байна. Дахин уншуулна уу.', 409, 'ATTENDANCE_CONFLICT')
+      }
       await audit(req, {
         action: 'EVENT_ATTENDANCE_RECORDED',
         resourceType: 'EVENT_REGISTRATION',
@@ -586,17 +592,21 @@ router.post('/events/:id/attendance/scan', requireIdempotency, async (req, res, 
           description: registration.content.title,
           actionUrl: '/student/registrations',
       })
-      return tx.eventRegistration.findUniqueOrThrow({ where: { id: registration.id } })
+      return {
+        registration: await tx.eventRegistration.findUniqueOrThrow({ where: { id: registration.id } }),
+        alreadyRecorded: false,
+      }
     })
     res.json({
       attendance: {
-        registrationId: updated.id,
-        status: updated.status,
-        attendedAt: updated.attendedAt?.toISOString() ?? null,
+        registrationId: outcome.registration.id,
+        status: outcome.registration.status,
+        attendedAt: outcome.registration.attendedAt?.toISOString() ?? null,
         student: actorName(registration.user),
         university: registration.user.university?.shortName || 'UniNet',
         event: registration.content.title,
-        alreadyRecorded: false,
+        approvalStatus: outcome.alreadyRecorded ? 'ALREADY_APPROVED' : 'APPROVED',
+        alreadyRecorded: outcome.alreadyRecorded,
       },
     })
   } catch (error) { next(error) }

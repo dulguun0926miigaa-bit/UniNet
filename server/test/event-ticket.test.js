@@ -14,6 +14,14 @@ describe('event QR ticket signatures', () => {
     expect(verifyEventTicket(token)).toMatchObject(source)
   })
 
+  it('issues a unique QR token on every ticket request', () => {
+    const expiresAt = new Date(Date.now() + 60_000)
+    const first = createEventTicket({ ...source, expiresAt })
+    const second = createEventTicket({ ...source, expiresAt })
+    expect(second).not.toBe(first)
+    expect(verifyEventTicket(second).jti).not.toBe(verifyEventTicket(first).jti)
+  })
+
   it('rejects payload and signature tampering', () => {
     const token = createEventTicket({ ...source, expiresAt: new Date(Date.now() + 60_000) })
     const [payload, signature] = token.split('.')

@@ -67,6 +67,73 @@ describe('Phase 5D registration and application management', () => {
     expect(await prisma.notification.count({ where: { userId: student.user.id, type: 'EVENT_ATTENDANCE' } })).toBe(1)
   })
 
+  it('allows only the event-owner Staff to approve a signed QR exactly once', async () => {
+    const university = await createUniversity('workflow-qr-approval')
+    const [owner, otherStaff, student] = await Promise.all([
+      createAuthenticatedUser({ role: 'STAFF', university, label: 'qr-event-owner', permissions: { canCreateContent: true, canManageRegistrations: true } }),
+      createAuthenticatedUser({ role: 'STAFF', university, label: 'qr-other-staff', permissions: { canManageRegistrations: true } }),
+      createAuthenticatedUser({ university, label: 'qr-student' }),
+    ])
+    const event = await createContent({ university, createdBy: owner.user, type: 'EVENT', label: 'single-use-qr-event' })
+    const registration = await prisma.eventRegistration.create({
+      data: {
+        userId: student.user.id,
+        contentId: event.id,
+        status: 'CONFIRMED',
+        registrationCode: `QR-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`,
+      },
+    })
+    const ticketResponse = await request(app)
+      .get(`/api/student/events/${event.id}/ticket`)
+      .set(bearer(student.token))
+      .expect(200)
+    const ticket = ticketResponse.body.ticket.token
+
+    const unsignedQr = await request(app)
+      .post(`/api/operations/events/${event.id}/attendance/scan`)
+      .set(bearer(owner.token))
+      .set('Idempotency-Key', key('unsigned-qr'))
+      .send({ ticket: `external-ticket.${'x'.repeat(120)}` })
+      .expect(422)
+    expect(unsignedQr.body.error.code).toBe('EVENT_TICKET_SIGNATURE_INVALID')
+
+    const denied = await request(app)
+      .post(`/api/operations/events/${event.id}/attendance/scan`)
+      .set(bearer(otherStaff.token))
+      .set('Idempotency-Key', key('other-staff-scan'))
+      .send({ ticket })
+      .expect(403)
+    expect(denied.body.error.code).toBe('RESOURCE_OWNERSHIP_DENIED')
+
+    const approved = await request(app)
+      .post(`/api/operations/events/${event.id}/attendance/scan`)
+      .set(bearer(owner.token))
+      .set('Idempotency-Key', key('first-qr-scan'))
+      .send({ ticket })
+      .expect(200)
+    expect(approved.body.attendance).toMatchObject({
+      registrationId: registration.id,
+      status: 'ATTENDED',
+      approvalStatus: 'APPROVED',
+      alreadyRecorded: false,
+    })
+
+    const duplicate = await request(app)
+      .post(`/api/operations/events/${event.id}/attendance/scan`)
+      .set(bearer(owner.token))
+      .set('Idempotency-Key', key('repeat-qr-scan'))
+      .send({ ticket })
+      .expect(200)
+    expect(duplicate.body.attendance).toMatchObject({
+      registrationId: registration.id,
+      status: 'ATTENDED',
+      approvalStatus: 'ALREADY_APPROVED',
+      alreadyRecorded: true,
+    })
+    expect(await prisma.auditLog.count({ where: { resourceId: registration.id, action: 'EVENT_ATTENDANCE_RECORDED' } })).toBe(1)
+    expect(await prisma.notification.count({ where: { userId: student.user.id, contentId: event.id, type: 'EVENT_ATTENDANCE' } })).toBe(1)
+  })
+
   it('enforces Staff application ownership and the review-shortlist-decision state machine', async () => {
     const university = await createUniversity('workflow-application')
     const [owner, otherStaff, admin, student] = await Promise.all([

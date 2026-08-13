@@ -4,7 +4,7 @@ import { PermissionGuard, RoleGuard } from "../auth/RoleGuard";
 import { ConfirmDialog, EmptyState, ErrorState, FilterBar, LoadingSkeleton, Modal, PageHeader, SelectFilter, StatCard, Toast, VisibilityBadge } from "../student/StudentUI";
 import { adminRoutes, operationsService, platformRoutes, resolveApiAssetUrl, staffRoutes } from "./operationsData";
 import SettingsPage from "../settings/SettingsPage";
-import { Bell, Building2, CheckCheck, ChevronDown, Clock3, Copy, Database, Eye, GripVertical, Plus, Send, ShieldAlert, Trash2, UserRound } from "lucide-react";
+import { Bell, Building2, Camera, CheckCheck, ChevronDown, Clock3, Copy, Database, Eye, GripVertical, Plus, RotateCcw, Send, ShieldAlert, Trash2, UserRound } from "lucide-react";
 import { PlatformAdminManagementPage, UniversityMembershipPage } from "../memberships/MembershipManagement.jsx";
 import HttpErrorState from "../errors/HttpErrorState.jsx";
 import { errorScreenStatus, mongolianErrorMessage } from "../errors/errorMessages.js";
@@ -17,7 +17,7 @@ const roleConfig = {
 };
 
 const statusStyle = status => status === "ACTIVE" || status === "PUBLISHED" || status === "APPROVED" || status === "OPERATIONAL"
-  ? "bg-emerald-50 text-emerald-700" : status === "PENDING" || status === "PENDING_APPROVAL" || status === "DRAFT" || status === "DEGRADED"
+  ? "bg-emerald-50 text-emerald-700" : ["PENDING", "PENDING_APPROVAL", "DRAFT", "DEGRADED", "ALREADY_APPROVED"].includes(status)
     ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-700";
 
 function Badge({ value }) {
@@ -163,6 +163,131 @@ function ContentEditor({ content, onSaved, onDelete, onError }) {
 
   if (!editable) return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-500">Энэ төлөвтэй контент read-only байна. Засахын өмнө зөвшөөрөгдсөн lifecycle төлөвт шилжүүлнэ.</div>;
   return <form onSubmit={save} className="space-y-4"><div className="grid gap-4 md:grid-cols-2"><label className="text-xs font-bold">Гарчиг *<input required minLength="3" value={title} onChange={event => setTitle(event.target.value)} className={inputClass} /></label><label className="text-xs font-bold">Visibility<select value={visibility} onChange={event => setVisibility(event.target.value)} className={inputClass}>{["PRIVATE", "PARTNERS", "NETWORK", "PUBLIC"].map(value => <option key={value}>{value}</option>)}</select></label><label className="text-xs font-bold md:col-span-2">Товч тайлбар *<input required minLength="3" value={shortDescription} onChange={event => setShortDescription(event.target.value)} className={inputClass} /></label><label className="text-xs font-bold md:col-span-2">Дэлгэрэнгүй *<textarea required minLength="3" rows="5" value={description} onChange={event => setDescription(event.target.value)} className={inputClass} /></label><label className="text-xs font-bold">Ангилал<input value={category} onChange={event => setCategory(event.target.value)} className={inputClass} /></label><label className="text-xs font-bold">Байгууллага<input value={organization} onChange={event => setOrganization(event.target.value)} className={inputClass} /></label><label className="text-xs font-bold">Байршил<input value={location} onChange={event => setLocation(event.target.value)} className={inputClass} /></label>{content.type === "EVENT" && <><label className="text-xs font-bold">Багтаамж<input type="number" min="1" value={capacity} onChange={event => setCapacity(event.target.value)} className={inputClass} /></label><label className="text-xs font-bold">Тасалбарын төрөл<select value={pricingType} onChange={event => setPricingType(event.target.value)} className={inputClass}><option value="FREE">FREE · Үнэгүй</option><option value="PAID">PAID · Төлбөртэй</option></select></label>{pricingType === "PAID" && <><label className="text-xs font-bold">Тасалбарын үнэ<input type="number" min="1" step="1" required value={priceAmount} onChange={event => setPriceAmount(event.target.value)} className={inputClass} /></label><label className="text-xs font-bold">Валют<select value={currency} onChange={event => setCurrency(event.target.value)} className={inputClass}><option value="MNT">MNT · ₮</option></select></label></>}</>}</div><div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={onDelete} className="mr-auto rounded-lg border border-rose-200 px-4 py-2 text-xs font-bold text-rose-600">Устгах</button><button disabled={saving} className="rounded-lg bg-blue-600 px-5 py-2 text-xs font-bold text-white disabled:opacity-50">{saving ? "Хадгалж байна..." : "Өөрчлөлт хадгалах"}</button></div></form>;
+}
+
+function EventQrApprovalScanner({ event, onToast }) {
+  const [cameraOpen, setCameraOpen] = useState(true);
+  const [cameraError, setCameraError] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const [result, setResult] = useState(null);
+  const videoRef = useRef(null);
+  const processingRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  const approveTicket = useCallback(async token => {
+    if (processingRef.current) return;
+    processingRef.current = true;
+    setScanning(true);
+    setCameraError("");
+    setCameraOpen(false);
+    try {
+      const attendance = await operationsService.scanAttendance(event.id, token.trim());
+      if (!mountedRef.current) return;
+      setResult(attendance);
+      onToast(attendance.alreadyRecorded
+        ? "Already approved — энэ QR тасалбар өмнө нь баталгаажсан байна."
+        : "QR тасалбар APPROVED болж, ирц нэг удаа бүртгэгдлээ.");
+    } catch (reason) {
+      if (!mountedRef.current) return;
+      const message = reason.message || "QR тасалбарыг баталгаажуулж чадсангүй.";
+      setCameraError(message);
+      onToast(message);
+    } finally {
+      if (mountedRef.current) setScanning(false);
+      processingRef.current = false;
+    }
+  }, [event.id, onToast]);
+
+  useEffect(() => {
+    if (!cameraOpen) return undefined;
+    let active = true;
+    let detecting = false;
+    let interval;
+    let stream;
+    let videoElement;
+
+    const start = async () => {
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) throw new Error("Энэ browser camera access дэмжихгүй байна.");
+        if (!("BarcodeDetector" in window)) throw new Error("Энэ browser QR camera scanner дэмжихгүй байна. Chrome эсвэл Edge-ийн шинэ хувилбар ашиглана уу.");
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+        if (!active || !videoRef.current) {
+          stream.getTracks().forEach(track => track.stop());
+          return;
+        }
+        videoElement = videoRef.current;
+        videoElement.srcObject = stream;
+        await videoElement.play();
+        const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
+        interval = window.setInterval(async () => {
+          if (!active || detecting || processingRef.current || !videoElement || videoElement.readyState < 2) return;
+          detecting = true;
+          try {
+            const codes = await detector.detect(videoElement);
+            const value = codes.find(code => code.rawValue)?.rawValue?.trim();
+            if (value) await approveTicket(value);
+          } catch { /* Дараагийн camera frame дээр дахин оролдоно. */ }
+          finally { detecting = false; }
+        }, 300);
+      } catch (reason) {
+        if (!active) return;
+        setCameraError(reason.message || "Камер нээж чадсангүй. Camera permission-ээ шалгана уу.");
+        setCameraOpen(false);
+      }
+    };
+
+    start();
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      stream?.getTracks().forEach(track => track.stop());
+      if (videoElement) videoElement.srcObject = null;
+    };
+  }, [approveTicket, cameraOpen]);
+
+  const restart = () => {
+    processingRef.current = false;
+    setCameraError("");
+    setResult(null);
+    setCameraOpen(true);
+  };
+
+  return <div className="mt-4 overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 p-3 text-white">
+    <div className="flex flex-wrap items-center justify-between gap-3 px-1 pb-3">
+      <div><p className="text-[10px] font-bold uppercase tracking-wider text-blue-300">Secure QR approval</p><p className="mt-1 text-xs text-slate-300">Камер UniNet-ийн signed ticket QR-г автоматаар шалгана.</p></div>
+      {!cameraOpen && !scanning && <button type="button" onClick={restart} className="inline-flex items-center gap-2 rounded-lg border border-slate-600 px-3 py-2 text-[10px] font-bold text-white"><RotateCcw className="h-3.5 w-3.5" />Дахин QR шалгах</button>}
+    </div>
+    {cameraOpen && <><video ref={videoRef} muted playsInline className="mx-auto max-h-[420px] w-full rounded-xl bg-black object-cover" /><p className="mt-2 text-center text-[10px] text-slate-300">Camera permission зөвшөөрөөд Student-ийн QR-г хүрээнд байрлуулна.</p></>}
+    {scanning && <div role="status" className="rounded-xl border border-blue-700 bg-blue-950 p-4 text-center text-xs font-bold text-blue-100">QR-г серверээр шалгаж байна...</div>}
+    {cameraError && !scanning && <div role="alert" className="rounded-xl border border-rose-700 bg-rose-950 p-4 text-xs text-rose-100">{cameraError}</div>}
+    {result && !scanning && <div aria-live="polite" className={`rounded-xl border p-4 text-xs ${result.alreadyRecorded ? "border-amber-600 bg-amber-950 text-amber-100" : "border-emerald-600 bg-emerald-950 text-emerald-100"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2"><b className="text-sm">{result.alreadyRecorded ? "ALREADY APPROVED" : "APPROVED"}</b><span>{result.attendedAt ? new Intl.DateTimeFormat("mn-MN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(result.attendedAt)) : ""}</span></div>
+      <p className="mt-2">{result.student} · {result.university} · {result.event}</p>
+    </div>}
+  </div>;
+}
+
+function ContentDescriptionPanel({ content, user, canManageRegistrations, onToast }) {
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const canScanOwnEvent = user.role === "STAFF"
+    && content.type === "EVENT"
+    && content.status === "PUBLISHED"
+    && content.createdById === user.id
+    && canManageRegistrations;
+
+  return <section className="rounded-xl border border-slate-200 bg-white p-5">
+    <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="min-w-0 flex-1"><h3 className="font-display text-sm font-bold text-slate-900">{content.type === "EVENT" ? "Event-ийн дэлгэрэнгүй тайлбар" : "Дэлгэрэнгүй тайлбар"}</h3><p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{content.description || content.shortDescription || "Тайлбар оруулаагүй байна."}</p></div>
+      {canScanOwnEvent && <button type="button" onClick={() => setScannerOpen(value => !value)} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-xs font-bold text-white shadow-sm hover:bg-blue-700"><Camera className="h-4 w-4" />{scannerOpen ? "Scanner хаах" : "QR шалгах"}</button>}
+    </div>
+    {canScanOwnEvent && <p className="mt-4 rounded-lg bg-blue-50 p-3 text-[11px] leading-relaxed text-blue-800">QR шалгахыг нээхэд camera permission хүснэ. Зөвхөн UniNet серверийн гарын үсэгтэй, энэ event-д хамаарах, төлбөр нь баталгаажсан ticket APPROVED болно.</p>}
+    {scannerOpen && <EventQrApprovalScanner event={content} onToast={onToast} />}
+  </section>;
 }
 
 function CreateContent({ onToast, user, partnerships = [], onSaved }) {
@@ -958,8 +1083,10 @@ function MonitoringPage({ data }) {
   );
 }
 
-function AttendanceScanner({ data, onToast, onScanned }) {
-  const events = (data.staffContent || []).filter(item => item.type === "EVENT" && ["PUBLISHED", "ACTIVE"].includes(item.status));
+function AttendanceScanner({ data, user, onToast, onScanned }) {
+  const events = (data.staffContent || []).filter(item => item.type === "EVENT"
+    && ["PUBLISHED", "ACTIVE"].includes(item.status)
+    && (user.role !== "STAFF" || item.createdById === user.id));
   const [eventId, setEventId] = useState("");
   const [ticket, setTicket] = useState("");
   const [scanning, setScanning] = useState(false);
@@ -1019,7 +1146,7 @@ function AttendanceScanner({ data, onToast, onScanned }) {
       setResult(attendance);
       setTicket("");
       await onScanned();
-      onToast(attendance.alreadyRecorded ? "Энэ оюутны ирц өмнө нь бүртгэгдсэн байна." : "QR тасалбар баталгаажиж, ирц бүртгэгдлээ.");
+      onToast(attendance.alreadyRecorded ? "Already approved — энэ QR тасалбар өмнө нь баталгаажсан байна." : "QR тасалбар APPROVED болж, ирц нэг удаа бүртгэгдлээ.");
     } catch (reason) {
       onToast(reason.message || "QR тасалбарыг баталгаажуулж чадсангүй.");
     } finally {
@@ -1030,7 +1157,7 @@ function AttendanceScanner({ data, onToast, onScanned }) {
   return <section className="mb-6 rounded-2xl border border-blue-100 bg-gradient-to-br from-white to-blue-50 p-5 shadow-sm">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Secure attendance</p><h2 className="font-display mt-1 text-lg font-bold text-slate-900">QR тасалбар уншуулах</h2><p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">Камер, USB QR scanner эсвэл token ашиглана. Сервер гарын үсэг, хугацаа, event, tenant болон registration төлөвийг шалгана.</p></div>
-      <div className="flex items-center gap-2">{result && <Badge value={result.alreadyRecorded ? "ALREADY_ATTENDED" : result.status} />}{events.length > 0 && <button type="button" onClick={() => { setCameraError(""); setCameraOpen(value => !value); }} className="rounded-xl border border-blue-200 bg-white px-4 py-2 text-xs font-bold text-blue-700">{cameraOpen ? "Камер хаах" : "Камераар scan хийх"}</button>}</div>
+      <div className="flex items-center gap-2">{result && <Badge value={result.approvalStatus || (result.alreadyRecorded ? "ALREADY_APPROVED" : "APPROVED")} />}{events.length > 0 && <button type="button" onClick={() => { setCameraError(""); setCameraOpen(value => !value); }} className="rounded-xl border border-blue-200 bg-white px-4 py-2 text-xs font-bold text-blue-700">{cameraOpen ? "Камер хаах" : "Камераар scan хийх"}</button>}</div>
     </div>
     {cameraError && <div role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">{cameraError}</div>}
     {cameraOpen && <div className="mt-5 overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 p-3"><video ref={videoRef} muted playsInline className="mx-auto max-h-[420px] w-full rounded-xl object-cover" /><p className="mt-2 text-center text-[10px] text-slate-300">Student-ийн signed ticket QR-ийг хүрээнд байрлуулна.</p></div>}
@@ -1055,7 +1182,7 @@ function PaginationControls({ meta, onPage }) {
   </div>;
 }
 
-function RegistrationManagementPage({ data, onToast }) {
+function RegistrationManagementPage({ data, user, onToast }) {
   const [query, setQuery] = useState({ page: 1, pageSize: 20, search: "", status: "ALL", eventId: "ALL" });
   const [result, setResult] = useState({ items: [], events: [], meta: { page: 1, totalPages: 1, total: 0 } });
   const [loading, setLoading] = useState(true);
@@ -1092,7 +1219,7 @@ function RegistrationManagementPage({ data, onToast }) {
   }));
   return <>
     <PageHeader title="Бүртгэлийн удирдлага" description="Backend tenant, Staff ownership, waitlist болон attendance дүрмээр шүүсэн бодит бүртгэлүүд." />
-    {data.capabilities?.canManageRegistrations && <AttendanceScanner data={data} onToast={onToast} onScanned={load} />}
+    {data.capabilities?.canManageRegistrations && <AttendanceScanner data={data} user={user} onToast={onToast} onScanned={load} />}
     <div className="mb-5 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-3">
       <label className="text-xs font-bold text-slate-600">Хайлт<input value={query.search} onChange={event => update("search", event.target.value)} placeholder="Нэр, email, student ID, event" className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5" /></label>
       <StyledSelect label="Төлөв" value={query.status} onChange={value => update("status", value)} options={[{ value: "ALL", label: "Бүгд" }, ...["REGISTERED", "WAITLISTED", "CANCELLED", "ATTENDED", "NO_SHOW"].map(value => ({ value, label: value }))]} />
@@ -1330,7 +1457,7 @@ export default function OperationsExperience({ user, onLogout, GlobalStyles }) {
   else if (user.role === "STAFF" && route === "/staff/content/create") page = <PermissionGuard user={user} permission="CREATE_CONTENT" fallback={<EmptyState title="Контент үүсгэх эрхгүй байна." />}><CreateContent onToast={setToast} user={user} partnerships={data.partnerships} onSaved={async ({ status }) => { await refreshData(); navigate(status === "DRAFT" ? "/staff/drafts" : status === "PUBLISHED" ? "/staff/published" : "/staff/approvals"); }} /></PermissionGuard>;
   else if (user.role === "STAFF" && ["/staff/content", "/staff/drafts", "/staff/published"].includes(route)) page = <ContentManagement data={data} route={route} onManage={action} onToast={setToast} />;
   else if (user.role === "STAFF" && route === "/staff/approvals") page = <ApprovalPage data={data} onAction={action} />;
-  else if (["STAFF", "UNIVERSITY_ADMIN"].includes(user.role) && route.endsWith("/registrations")) page = <RegistrationManagementPage data={data} onToast={setToast} />;
+  else if (["STAFF", "UNIVERSITY_ADMIN"].includes(user.role) && route.endsWith("/registrations")) page = <RegistrationManagementPage data={data} user={user} onToast={setToast} />;
   else if (["STAFF", "UNIVERSITY_ADMIN"].includes(user.role) && route.endsWith("/applications")) page = <ApplicationManagementPage onToast={setToast} />;
   else if (user.role === "UNIVERSITY_ADMIN" && route === "/admin/approvals") page = <ApprovalPage data={data} admin onAction={action} />;
   else if (user.role === "UNIVERSITY_ADMIN" && ["/admin/users", "/admin/staff", "/admin/students"].includes(route)) page = <UniversityMembershipPage key={route} route={route} onToast={setToast} onChanged={refreshData} />;
@@ -1349,7 +1476,7 @@ export default function OperationsExperience({ user, onLogout, GlobalStyles }) {
         notifications={data.notifications || []} onNotificationClick={readNotification} onOpenNotifications={() => navigate(`${config.base}/notifications`)}>
         {page}
       </DashboardLayout>
-      {detail && <Modal title={detail.title || detail.name || detail.university || "Дэлгэрэнгүй"} onClose={() => setDetail(null)} wide>{detail.statusHistory ? <div className="space-y-5"><ContentEditor content={detail} onError={setToast} onDelete={() => setConfirm({ action: "delete-content", item: detail })} onSaved={async () => { await refreshData(); setDetail(null); setToast("Контентын өөрчлөлтийг хадгаллаа."); }} /><section className="rounded-xl bg-slate-50 p-5"><h3 className="font-display text-sm font-bold">Lifecycle түүх</h3><ol className="mt-4 space-y-3">{detail.statusHistory.map(entry => <li key={entry.id} className="flex flex-wrap items-center gap-2 text-xs"><Badge value={entry.toStatus} /><span className="text-slate-500">{entry.fromStatus || "Үүсгэсэн"} → {entry.toStatus}</span><time className="ml-auto text-slate-400">{new Intl.DateTimeFormat("mn-MN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(entry.createdAt))}</time>{entry.reason && <p className="w-full text-slate-500">{entry.reason}</p>}</li>)}</ol></section></div> : <div className="grid gap-3 md:grid-cols-2">{Object.entries(detail).filter(([,value]) => value == null || ["string","number","boolean"].includes(typeof value)).map(([key,value]) => <div key={key} className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{key}</div><div className="mt-2 break-words text-sm font-semibold text-slate-700">{String(value ?? "—")}</div></div>)}</div>}<div className="mt-5 flex flex-wrap justify-end gap-2">
+      {detail && <Modal title={detail.title || detail.name || detail.university || "Дэлгэрэнгүй"} onClose={() => setDetail(null)} wide>{detail.statusHistory ? <div className="space-y-5"><ContentEditor content={detail} onError={setToast} onDelete={() => setConfirm({ action: "delete-content", item: detail })} onSaved={async () => { await refreshData(); setDetail(null); setToast("Контентын өөрчлөлтийг хадгаллаа."); }} /><ContentDescriptionPanel content={detail} user={user} canManageRegistrations={Boolean(data.capabilities?.canManageRegistrations)} onToast={setToast} /><section className="rounded-xl bg-slate-50 p-5"><h3 className="font-display text-sm font-bold">Lifecycle түүх</h3><ol className="mt-4 space-y-3">{detail.statusHistory.map(entry => <li key={entry.id} className="flex flex-wrap items-center gap-2 text-xs"><Badge value={entry.toStatus} /><span className="text-slate-500">{entry.fromStatus || "Үүсгэсэн"} → {entry.toStatus}</span><time className="ml-auto text-slate-400">{new Intl.DateTimeFormat("mn-MN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(entry.createdAt))}</time>{entry.reason && <p className="w-full text-slate-500">{entry.reason}</p>}</li>)}</ol></section></div> : <div className="grid gap-3 md:grid-cols-2">{Object.entries(detail).filter(([,value]) => value == null || ["string","number","boolean"].includes(typeof value)).map(([key,value]) => <div key={key} className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{key}</div><div className="mt-2 break-words text-sm font-semibold text-slate-700">{String(value ?? "—")}</div></div>)}</div>}<div className="mt-5 flex flex-wrap justify-end gap-2">
         {user.role === "STAFF" && detail.title && <>
           {detail.status === "DRAFT" && <button type="button" onClick={() => changeContentStatus(detail, "PENDING_APPROVAL", "Контент батлуулахаар амжилттай илгээгдлээ.")} className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white">Батлуулахаар илгээх</button>}
           {detail.status === "PUBLISHED" && <button type="button" onClick={() => setConfirm({ action: "archive", item: detail })} className="rounded-lg border border-amber-200 px-4 py-2 text-xs font-bold text-amber-700">Archive</button>}
