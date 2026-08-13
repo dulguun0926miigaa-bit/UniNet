@@ -64,6 +64,28 @@ describe('structured logging and request context', () => {
     })
   })
 
+  it('keeps safe Prisma error metadata while redacting sensitive metadata', () => {
+    const error = Object.assign(new Error('query details must not be logged'), {
+      name: 'PrismaClientKnownRequestError',
+      code: 'P2022',
+      meta: {
+        modelName: 'EventRegistration',
+        column: 'EventRegistration.ticketTokenHash',
+        accessToken: 'never-log-this',
+      },
+    })
+
+    expect(redactLogData(error)).toEqual({
+      name: 'PrismaClientKnownRequestError',
+      code: 'P2022',
+      meta: {
+        modelName: 'EventRegistration',
+        column: 'EventRegistration.ticketTokenHash',
+        accessToken: '[REDACTED]',
+      },
+    })
+  })
+
   it('returns a correlation header and logs route, actor, tenant, status, and latency', async () => {
     const logger = loggerDouble()
     const ticks = [1_000_000_000n, 1_012_345_000n]

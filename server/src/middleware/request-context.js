@@ -18,7 +18,7 @@ export function createRequestIdMiddleware({ idFactory = randomUUID } = {}) {
   }
 }
 
-function safeRoute(req) {
+export function requestRoute(req) {
   const routePath = req.route?.path
   if (typeof routePath === 'string') return `${req.baseUrl || ''}${routePath}`
 
@@ -33,6 +33,10 @@ function safeRoute(req) {
     .join('/')
 }
 
+export function requestAction(req) {
+  return `${req.method} ${requestRoute(req)}`
+}
+
 export function createAccessLogMiddleware({ logger = defaultLogger, now = process.hrtime.bigint } = {}) {
   return function accessLogMiddleware(req, res, next) {
     const startedAt = now()
@@ -45,7 +49,7 @@ export function createAccessLogMiddleware({ logger = defaultLogger, now = proces
       const status = closedEarly && !res.writableEnded ? 499 : res.statusCode
       const level = status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info'
       const user = req.auth?.user
-      const route = safeRoute(req)
+      const route = requestRoute(req)
 
       logger[level]('http.request.completed', {
         requestId: req.requestId,
@@ -69,4 +73,3 @@ export function createAccessLogMiddleware({ logger = defaultLogger, now = proces
 
 export const requestIdMiddleware = createRequestIdMiddleware()
 export const accessLogMiddleware = createAccessLogMiddleware()
-

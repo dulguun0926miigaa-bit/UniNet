@@ -1,7 +1,7 @@
 import express from 'express'
 import request from 'supertest'
-import { describe, expect, it } from 'vitest'
-import { errorHandler, normalizeHttpError, notFoundHandler } from '../src/middleware/error-handler.js'
+import { describe, expect, it, vi } from 'vitest'
+import { createErrorHandler, errorHandler, normalizeHttpError, notFoundHandler } from '../src/middleware/error-handler.js'
 import { createRequestIdMiddleware } from '../src/middleware/request-context.js'
 
 function errorTestApp() {
@@ -74,5 +74,26 @@ describe('consistent API error envelope', () => {
     expect(unexpected.text).not.toContain('database password')
     expect(missing.status).toBe(404)
     expect(missing.body.error).toMatchObject({ code: 'ROUTE_NOT_FOUND', requestId: 'error-request-id' })
+  })
+
+  it('logs the sanitized route action with the request ID for unexpected errors', async () => {
+    const logger = { error: vi.fn() }
+    const failure = Object.assign(new Error('missing database column'), {
+      name: 'PrismaClientKnownRequestError',
+      code: 'P2022',
+      meta: { modelName: 'EventRegistration', column: 'EventRegistration.ticketTokenHash' },
+    })
+    const app = express()
+    app.use(createRequestIdMiddleware({ idFactory: () => 'schema-request-id' }))
+    app.get('/registrations/:id', () => { throw failure })
+    app.use(createErrorHandler({ logger, logServerErrors: true }))
+
+    await request(app).get('/registrations/8ab4f955-5167-4367-97ff-7f5f4ecb391f').expect(500)
+
+    expect(logger.error).toHaveBeenCalledWith('http.request.failed', {
+      requestId: 'schema-request-id',
+      action: 'GET /registrations/:id',
+      error: failure,
+    })
   })
 })

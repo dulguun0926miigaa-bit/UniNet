@@ -41,9 +41,13 @@ export function redactLogData(value, key = '', seen = new WeakSet(), depth = 0) 
   if (value instanceof Date) return value.toISOString()
   if (value instanceof Error) {
     const errorCode = 'code' in value ? value.code : undefined
+    const errorMeta = 'meta' in value && value.meta && typeof value.meta === 'object'
+      ? redactLogData(value.meta, 'errorMeta', seen, depth + 1)
+      : undefined
     return {
       name: value.name,
       ...(typeof errorCode === 'string' ? { code: errorCode } : {}),
+      ...(errorMeta ? { meta: errorMeta } : {}),
     }
   }
   if (typeof value !== 'object') return String(value)

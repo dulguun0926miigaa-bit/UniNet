@@ -2,6 +2,7 @@ import { ZodError } from 'zod'
 import { env } from '../config/env.js'
 import { logger as defaultLogger } from '../observability/logger.js'
 import { AppError } from '../utils/app-error.js'
+import { requestAction } from './request-context.js'
 
 const messages = {
   invalidJson: 'JSON хүсэлтийн бүтэц буруу байна.',
@@ -60,13 +61,14 @@ export function normalizeHttpError(error) {
   return { status: 500, code: 'INTERNAL_SERVER_ERROR', message: messages.internal }
 }
 
-export function createErrorHandler({ logger = defaultLogger } = {}) {
+export function createErrorHandler({ logger = defaultLogger, logServerErrors = env.NODE_ENV !== 'test' } = {}) {
   return function errorHandler(error, req, res, next) {
     void next
     const normalized = normalizeHttpError(error)
-    if (normalized.status >= 500 && env.NODE_ENV !== 'test') {
+    if (normalized.status >= 500 && logServerErrors) {
       logger.error('http.request.failed', {
         requestId: req.requestId,
+        action: requestAction(req),
         error,
       })
     }

@@ -4,6 +4,12 @@ UniNet uses committed Prisma SQL migrations and a forward-fix production policy.
 `prisma migrate dev` is for creating migrations locally; production runs exactly one
 controlled `prisma migrate deploy` job, never one job per API replica.
 
+When the runtime `DATABASE_URL` uses a transaction pooler, configure `DIRECT_URL`
+with a session/direct PostgreSQL connection for Prisma CLI commands. For Supabase,
+the transaction pooler commonly uses port `6543`, while the session pooler uses
+port `5432`. `prisma.config.ts` prefers `DIRECT_URL` when it is present and safely
+maps a Supabase `*.pooler.supabase.com:6543` URL to session port `5432` otherwise.
+
 ## Change classification
 
 | Class | Examples | Release approach |
@@ -60,6 +66,7 @@ DDL recipe without testing the exact supported PostgreSQL and Prisma versions.
 - [ ] Automated backup/PITR healthy and an exact pre-change recovery checkpoint recorded.
 - [ ] Restore procedure is current; RPO/RTO and abort thresholds approved.
 - [ ] Migration credential is separate and available; API credential does not need DDL.
+- [ ] `DIRECT_URL` uses a session/direct connection when `DATABASE_URL` is transaction-pooled.
 - [ ] Forward-fix SQL/code prepared for the highest-risk failure where practical.
 
 Items concerning provider backup/staging require external evidence and are not
