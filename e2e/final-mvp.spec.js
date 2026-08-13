@@ -23,7 +23,7 @@ async function logout(page) {
 test.describe.configure({ mode: 'serial' })
 
 test('seeded Staff can see deterministic registration/application/survey demo data', async ({ page }) => {
-  await login(page, 'staff@num.edu.mn', '/staff')
+  await login(page, 'staff@num.edu.com', '/staff')
   await page.goto('/staff/registrations')
   await expect(page.getByRole('heading', { name: 'Арга хэмжээний бүртгэл' })).toBeVisible()
   await expect(page.getByText('Final MVP Backend Demo Event')).toBeVisible()

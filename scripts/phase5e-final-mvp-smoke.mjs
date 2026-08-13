@@ -97,7 +97,7 @@ check(idorIntegration.includes('sortBy=password'), 'sort allowlist integration a
 check(frontendErrorTest.includes('selects dedicated 403, 404 and 500 screens'), 'frontend error mapping test missing')
 check(frontendSecurityTest.includes('rejecting raw SQL APIs'), 'SQL injection source contract missing')
 check(frontendSecurityTest.includes('neutralizes spreadsheet formula'), 'CSV formula security test missing')
-for (const identity of ['staff@num.edu.mn', 'student@num.edu.mn', 'superadmin@uninet.local']) check(e2e.includes(identity), `deterministic E2E identity missing: ${identity}`)
+for (const identity of ['staff@num.edu.com', 'student@num.edu.mn', 'superadmin@uninet.local']) check(e2e.includes(identity), `deterministic E2E identity missing: ${identity}`)
 check(e2e.includes('/student/does-not-exist'), 'E2E 404 flow missing')
 check(e2e.includes('/platform/universities'), 'E2E university/domain flow missing')
 check(checklist.includes('Phase 5E — Final MVP stabilization'), 'Phase 5E checklist section missing')

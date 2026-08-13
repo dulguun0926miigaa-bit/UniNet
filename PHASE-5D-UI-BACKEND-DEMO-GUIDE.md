@@ -33,7 +33,7 @@ npm run dev
 Demo account-ууд:
 
 ```text
-МУИС Staff:   staff@num.edu.mn
+МУИС Staff:   staff@num.edu.com
 МУИС Admin:   admin@num.edu.mn
 МУИС Student: student@num.edu.mn
 ШУТИС Staff:  staff@must.edu.mn
@@ -46,7 +46,7 @@ Password:     SEED_ROLE_PASSWORD-ын утга
 
 ### Алхам A — Staff event үүсгэх
 
-1. `staff@num.edu.mn`-ээр нэвтэрнэ.
+1. `staff@num.edu.com`-ээр нэвтэрнэ.
 2. Event/content management хэсэгт шинэ event үүсгэнэ.
 3. Visibility-г `NETWORK`, capacity-г `1`, registration deadline-ийг ирээдүйн огноо болгоно.
 4. Event-ээ нийтэлнэ.
@@ -85,7 +85,7 @@ WAITLISTED
 
 ### Алхам D — Staff registration management харах
 
-1. `staff@num.edu.mn`-ээр дахин нэвтэрнэ.
+1. `staff@num.edu.com`-ээр дахин нэвтэрнэ.
 2. `Бүртгэлүүд` хэсэгт орно.
 3. Event filter, status filter, search болон pagination-ийг ашиглана.
 
@@ -125,7 +125,7 @@ Backend transaction нь сул орон гармагц waitlist-ийн эхни
 
 ### Алхам A — Staff opportunity үүсгэх
 
-1. `staff@num.edu.mn`-ээр нэвтэрнэ.
+1. `staff@num.edu.com`-ээр нэвтэрнэ.
 2. Internship эсвэл Job content үүсгэнэ.
 3. Visibility-г `NETWORK` болгоод publish хийнэ.
 
@@ -144,7 +144,7 @@ SUBMITTED
 
 ### Алхам C — Staff application management
 
-1. `staff@num.edu.mn`-ээр орно.
+1. `staff@num.edu.com`-ээр орно.
 2. `Өргөдлүүд` хэсэгт орно.
 3. Search, status filter, opportunity filter болон pagination ашиглана.
 4. Application detail нээнэ.

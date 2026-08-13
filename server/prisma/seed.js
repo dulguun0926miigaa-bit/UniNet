@@ -278,6 +278,41 @@ async function main() {
     }
 
     const passwordHash = await hashPassword(process.env.SEED_ROLE_PASSWORD)
+    const canonicalNumStaffEmail = 'staff@num.edu.com'
+    const legacyNumStaffEmail = 'staff@num.edu.mn'
+    const [canonicalNumStaff, legacyNumStaff] = await Promise.all([
+      prisma.user.findUnique({ where: { normalizedEmail: canonicalNumStaffEmail } }),
+      prisma.user.findUnique({ where: { normalizedEmail: legacyNumStaffEmail } }),
+    ])
+    if (!canonicalNumStaff && legacyNumStaff?.role === UserRole.STAFF) {
+      await prisma.$transaction(async db => {
+        const targetRosterMember = legacyNumStaff.universityId
+          ? await db.universityMember.findUnique({
+              where: {
+                universityId_normalizedEmail: {
+                  universityId: legacyNumStaff.universityId,
+                  normalizedEmail: canonicalNumStaffEmail,
+                },
+              },
+            })
+          : null
+        if (legacyNumStaff.universityId) {
+          await db.universityMember.updateMany({
+            where: {
+              universityId: legacyNumStaff.universityId,
+              normalizedEmail: legacyNumStaffEmail,
+            },
+            data: targetRosterMember
+              ? { employeeCode: null }
+              : { email: canonicalNumStaffEmail, normalizedEmail: canonicalNumStaffEmail },
+          })
+        }
+        await db.user.update({
+          where: { id: legacyNumStaff.id },
+          data: { email: canonicalNumStaffEmail, normalizedEmail: canonicalNumStaffEmail },
+        })
+      })
+    }
     const roleUsers = []
     for (const universityConfig of universities) {
       const university = universityBySlug.get(universityConfig.slug)
@@ -300,12 +335,12 @@ async function main() {
           permissions: null,
         },
         {
-          email: `staff@${universityConfig.officialDomain}`,
+          email: universityConfig.slug === 'muis' ? 'staff@num.edu.com' : `staff@${universityConfig.officialDomain}`,
           role: UserRole.STAFF,
           universityId: university.id,
           memberType: 'STAFF',
-          firstName: 'Тэмүүлэн',
-          lastName: `${university.shortName} Staff`,
+          firstName: universityConfig.slug === 'muis' ? 'Batzogsool' : 'Тэмүүлэн',
+          lastName: universityConfig.slug === 'muis' ? 'Batjargal' : `${university.shortName} Staff`,
           studentId: null,
           employeeCode: `${university.slug.toUpperCase()}-STAFF-DEMO`,
           department: 'Карьер хөгжлийн төв',
@@ -346,31 +381,6 @@ async function main() {
           },
         },
       )
-      if (universityConfig.slug === 'muis') {
-        roleUsers.push({
-          email: 'staff@num.edu.com',
-          role: UserRole.STAFF,
-          universityId: university.id,
-          memberType: 'STAFF',
-          firstName: 'Batzogsool',
-          lastName: 'Batjargal',
-          studentId: null,
-          employeeCode: 'MUIS-GOOGLE-STAFF',
-          department: 'Карьер хөгжлийн төв',
-          major: null,
-          enrollmentYear: null,
-          graduationYear: null,
-          jobTitle: 'Staff',
-          permissions: {
-            canCreateContent: true,
-            canPublish: false,
-            canManageRegistrations: true,
-            canManageApplications: true,
-            canManageSurveys: true,
-            canViewReports: true,
-          },
-        })
-      }
     }
 
     const configuredSuperAdminEmail = (process.env.SEED_SUPER_ADMIN_EMAIL || 'superadmin@uninet.local').trim().toLowerCase()
@@ -527,7 +537,7 @@ async function main() {
     // seeded МУИС Staff account so registration/application management pages are
     // immediately demonstrable after `npm run db:demo-reset` or `npm run db:seed`.
     const numUniversity = universityBySlug.get('muis')
-    const numStaff = await prisma.user.findUnique({ where: { normalizedEmail: 'staff@num.edu.mn' } })
+    const numStaff = await prisma.user.findUnique({ where: { normalizedEmail: 'staff@num.edu.com' } })
     const numStudent = await prisma.user.findUnique({ where: { normalizedEmail: 'student@num.edu.mn' } })
     if (numUniversity && numStaff && numStudent) {
       const demoEvent = await prisma.content.upsert({
@@ -615,13 +625,13 @@ async function main() {
 
     console.info('Local role accounts seeded for all five universities:')
     for (const item of universities) {
-      console.info(`  ${item.shortName}: admin@${item.officialDomain}, staff@${item.officialDomain}, student@${item.officialDomain}`)
+      const staffEmail = item.slug === 'muis' ? 'staff@num.edu.com' : `staff@${item.officialDomain}`
+      console.info(`  ${item.shortName}: admin@${item.officialDomain}, ${staffEmail}, student@${item.officialDomain}`)
     }
     console.info(`  Platform: ${configuredSuperAdminEmail}`)
   }
 
-  // Prefer the explicitly requested production address; local/demo databases
-  // use the repository's deterministic .edu.mn Staff identity.
+  // Keep the verified Google identity prelinked to the canonical МУИС Staff account.
   const requestedGoogleStaff = await prisma.user.findUnique({ where: { normalizedEmail: 'staff@num.edu.com' } })
   if (requestedGoogleStaff?.role === UserRole.STAFF) {
     await prisma.user.updateMany({

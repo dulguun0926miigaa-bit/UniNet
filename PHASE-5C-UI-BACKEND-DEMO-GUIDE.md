@@ -34,7 +34,7 @@ npm run dev
 
 | Сургууль | Student | Staff | University Admin |
 |---|---|---|---|
-| МУИС | `student@num.edu.mn` | `staff@num.edu.mn` | `admin@num.edu.mn` |
+| МУИС | `student@num.edu.mn` | `staff@num.edu.com` | `admin@num.edu.mn` |
 | ШУТИС | `student@must.edu.mn` | `staff@must.edu.mn` | `admin@must.edu.mn` |
 | МУБИС | `student@msue.edu.mn` | `staff@msue.edu.mn` | `admin@msue.edu.mn` |
 | АШУҮИС | `student@mnums.edu.mn` | `staff@mnums.edu.mn` | `admin@mnums.edu.mn` |

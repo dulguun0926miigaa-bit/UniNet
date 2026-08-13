@@ -35,7 +35,7 @@ Demo account-уудын password нь `.env`-ийн `SEED_ROLE_PASSWORD`.
 
 ```text
 МУИС Student: student@num.edu.mn
-МУИС Staff:   staff@num.edu.mn
+МУИС Staff:   staff@num.edu.com
 МУИС Admin:   admin@num.edu.mn
 ШУТИС Student: student@must.edu.mn
 ШУТИС Admin:   admin@must.edu.mn
@@ -46,7 +46,7 @@ Platform Super Admin: superadmin@uninet.local
 
 1. `student@num.edu.mn`-ээр нэвтэрнэ.
 2. **Миний бүртгэлүүд** хэсэгт `Final MVP Backend Demo Event` database-аас харагдана.
-3. Logout хийгээд `staff@num.edu.mn`-ээр орно.
+3. Logout хийгээд `staff@num.edu.com`-ээр орно.
 4. **Бүртгэлүүд** хэсэгт Student, event, `REGISTERED` status харагдана.
 5. `Ирц батлах` үйлдлийг дарна.
 6. Дахин refresh хийхэд status `ATTENDED` болно.
@@ -57,7 +57,7 @@ Platform Super Admin: superadmin@uninet.local
 
 ## 3. Application state machine
 
-1. `staff@num.edu.mn` → **Өргөдлүүд**.
+1. `staff@num.edu.com` → **Өргөдлүүд**.
 2. `Final MVP Full-stack Internship`-ийн `SUBMITTED` application-ийг нээнэ.
 3. Student profile, CV link/metadata, immutable history-г харуулна.
 4. Дарааллаар:

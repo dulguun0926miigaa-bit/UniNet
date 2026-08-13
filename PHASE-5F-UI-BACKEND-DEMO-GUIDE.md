@@ -91,7 +91,7 @@ npm run db:studio
 
 ## E. Survey нэгтгэсэн дэлгэц
 
-1. `staff@num.edu.mn`-ээр орно.
+1. `staff@num.edu.com`-ээр орно.
 2. `Судалгаа ба асуулга` руу орно.
 3. Builder, survey жагсаалт, response count болон analytics нэг дэлгэцэд байгааг үзүүлнэ.
 4. PRIVATE survey нийтэлж `student@num.edu.mn` хардаг, `student@must.edu.mn` харахгүйг үзүүлнэ.

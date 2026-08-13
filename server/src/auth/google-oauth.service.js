@@ -8,7 +8,7 @@ import { authRepository } from './auth.repository.js'
 import { buildPolicyAcceptanceData, requireRegistrationPolicies } from '../privacy/policy.js'
 import { prisma } from '../lib/prisma.js'
 import { CANONICAL_GOOGLE_ISSUER, validateGoogleIdentityClaims } from './google-oauth.security.js'
-import { resolveGoogleAccountPrelink } from './google-account-prelinks.js'
+import { resolveGoogleAccountPrelink, resolveGoogleAccountPrelinkConfig, resolveLegacyGoogleAccountPrelink } from './google-account-prelinks.js'
 import { mfaService } from './mfa.service.js'
 import { emailService } from './email.service.js'
 import { assertNotCommonBreachedPassword } from './password-security.js'
@@ -221,6 +221,133 @@ export const googleOAuthService = {
           where: { normalizedEmail: prelinkedAccountEmail },
           include: { university: true, studentProfile: true, staffProfile: true },
         })
+        if (!user) {
+          const legacyAccountEmail = resolveLegacyGoogleAccountPrelink(identity.gmail)
+          const legacyUser = legacyAccountEmail
+            ? await prisma.user.findUnique({
+                where: { normalizedEmail: legacyAccountEmail },
+                include: { university: true, studentProfile: true, staffProfile: true },
+              })
+            : null
+          if (legacyUser && (legacyUser.role !== 'STAFF' || legacyUser.status !== 'ACTIVE')) {
+            throw new AppError('Google account-д холбосон legacy Staff бүртгэл идэвхгүй эсвэл role тохирохгүй байна.', 409, 'GOOGLE_PRELINK_TARGET_INVALID')
+          }
+          if (legacyUser?.googleId && (legacyUser.googleId !== identity.googleId || legacyUser.googleIssuer !== identity.googleIssuer)) {
+            throw new AppError('Legacy Staff account өөр Google account-тай аль хэдийн холбогдсон байна.', 409, 'OAUTH_ACCOUNT_ALREADY_LINKED')
+          }
+          if (legacyUser) {
+            user = await prisma.$transaction(async tx => {
+              const targetRosterMember = legacyUser.universityId
+                ? await tx.universityMember.findUnique({
+                    where: {
+                      universityId_normalizedEmail: {
+                        universityId: legacyUser.universityId,
+                        normalizedEmail: prelinkedAccountEmail,
+                      },
+                    },
+                  })
+                : null
+              if (legacyUser.universityId) {
+                await tx.universityMember.updateMany({
+                  where: {
+                    universityId: legacyUser.universityId,
+                    normalizedEmail: legacyAccountEmail,
+                  },
+                  data: targetRosterMember
+                    ? { employeeCode: null }
+                    : { email: prelinkedAccountEmail, normalizedEmail: prelinkedAccountEmail },
+                })
+              }
+              return tx.user.update({
+                where: { id: legacyUser.id },
+                data: { email: prelinkedAccountEmail, normalizedEmail: prelinkedAccountEmail },
+                include: { university: true, studentProfile: true, staffProfile: true },
+              })
+            })
+            await audit('GOOGLE_PRELINK_LEGACY_STAFF_EMAIL_MIGRATED', user, context, {
+              previousEmail: legacyAccountEmail,
+              nextEmail: prelinkedAccountEmail,
+            }, 'MEDIUM')
+          }
+        }
+        if (!user) {
+          const prelinkConfig = resolveGoogleAccountPrelinkConfig(identity.gmail)
+          const university = prelinkConfig?.universitySlug
+            ? await prisma.university.findUnique({ where: { slug: prelinkConfig.universitySlug } })
+            : null
+          if (prelinkConfig && university?.status === 'ACTIVE') {
+            const passwordHash = await hashPassword(crypto.randomBytes(48).toString('base64url'))
+            user = await prisma.$transaction(async tx => {
+              const provisionedUser = await tx.user.upsert({
+                where: { normalizedEmail: prelinkedAccountEmail },
+                update: {},
+                create: {
+                  email: prelinkedAccountEmail,
+                  normalizedEmail: prelinkedAccountEmail,
+                  passwordHash,
+                  gmail: identity.gmail,
+                  authProvider: 'GOOGLE',
+                  role: 'STAFF',
+                  status: 'ACTIVE',
+                  universityId: university.id,
+                  emailVerifiedAt: new Date(),
+                },
+              })
+              if (provisionedUser.role !== 'STAFF' || provisionedUser.status !== 'ACTIVE' || provisionedUser.universityId !== university.id) {
+                throw new AppError('Google prelink account-ийн role, status эсвэл сургууль тохирохгүй байна.', 409, 'GOOGLE_PRELINK_TARGET_INVALID')
+              }
+              await tx.universityMember.upsert({
+                where: {
+                  universityId_normalizedEmail: {
+                    universityId: university.id,
+                    normalizedEmail: prelinkedAccountEmail,
+                  },
+                },
+                update: {
+                  email: prelinkedAccountEmail,
+                  firstName: identity.firstName || prelinkConfig.firstName,
+                  lastName: identity.lastName || prelinkConfig.lastName,
+                  memberType: 'STAFF',
+                  enrollmentStatus: 'ACTIVE',
+                },
+                create: {
+                  universityId: university.id,
+                  email: prelinkedAccountEmail,
+                  normalizedEmail: prelinkedAccountEmail,
+                  firstName: identity.firstName || prelinkConfig.firstName,
+                  lastName: identity.lastName || prelinkConfig.lastName,
+                  memberType: 'STAFF',
+                  enrollmentStatus: 'ACTIVE',
+                },
+              })
+              await tx.staffProfile.upsert({
+                where: { userId: provisionedUser.id },
+                update: {},
+                create: {
+                  userId: provisionedUser.id,
+                  universityId: university.id,
+                  firstName: identity.firstName || prelinkConfig.firstName,
+                  lastName: identity.lastName || prelinkConfig.lastName,
+                  department: 'Карьер хөгжлийн төв',
+                  jobTitle: 'Staff',
+                  canCreateContent: true,
+                  canManageRegistrations: true,
+                  canManageApplications: true,
+                  canManageSurveys: true,
+                  canViewReports: true,
+                },
+              })
+              return tx.user.findUnique({
+                where: { id: provisionedUser.id },
+                include: { university: true, studentProfile: true, staffProfile: true },
+              })
+            })
+            await audit('GOOGLE_PRELINK_STAFF_PROVISIONED', user, context, {
+              accountEmail: prelinkedAccountEmail,
+              universitySlug: prelinkConfig.universitySlug,
+            }, 'HIGH')
+          }
+        }
         if (!user) {
           throw new AppError(
             `Google account-д холбох Staff бүртгэл олдсонгүй: ${prelinkedAccountEmail}`,
