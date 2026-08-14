@@ -2,6 +2,7 @@ import { watch as watchFileSystem } from 'node:fs'
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 import process from 'node:process'
+import { deployPendingMigrations } from './deploy-pending-migrations.mjs'
 
 const watchMode = process.argv.includes('--watch')
 const root = process.cwd()
@@ -141,6 +142,8 @@ async function shutdown(signal) {
   await Promise.all([...children.values()].map(child => stopChild(child, signal)))
   process.exit(0)
 }
+
+if (!watchMode) await deployPendingMigrations()
 
 for (const service of services) spawnService(service)
 startWatchers()
