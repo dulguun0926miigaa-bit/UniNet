@@ -12,6 +12,7 @@ import AppErrorBoundary from "./errors/AppErrorBoundary";
 import { mongolianErrorMessage } from "./errors/errorMessages.js";
 import { apiRequest } from "./api/apiClient.js";
 import { formatDate, formatDateTime } from "./settings/uiPreferences.js";
+import NativeStyledSelect from "./ui/NativeStyledSelect.jsx";
 
 const StudentExperience = lazy(() => import("./student/StudentExperience"));
 const OperationsExperience = lazy(() => import("./operations/OperationsExperience"));
@@ -1229,10 +1230,10 @@ export default function UniNetLanding() {
                       </div>
                       <div>
                         <label htmlFor="enrollment-year" className="block text-xs font-bold text-slate-700 mb-2">Элсэх он</label>
-                        <select id="enrollment-year" name="enrollmentYear" required defaultValue="" className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10">
+                        <NativeStyledSelect id="enrollment-year" name="enrollmentYear" required defaultValue="" className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10">
                           <option value="" disabled>Оноо сонгоно уу</option>
                           {Array.from({ length: 16 }, (_, index) => new Date().getFullYear() - index).map(year => <option key={year} value={year}>{year}</option>)}
-                        </select>
+                        </NativeStyledSelect>
                         <p className="mt-1 text-[10px] text-slate-400">Ирээдүйн он сонгох боломжгүй.</p>
                       </div>
                     </div>
@@ -1297,7 +1298,7 @@ export default function UniNetLanding() {
                           <label className="text-xs font-bold text-slate-700 md:col-span-2">Сургуулийн имэйл<input name="schoolEmail" type="email" required placeholder="өөрийн-нэр@num.edu.mn" className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-normal outline-none focus:border-blue-500" /><span className="mt-1 block text-[10px] font-normal text-slate-400">Local хэсэг хүссэн нэр байж болно. Домэйнээр их сургуулийг автоматаар тодорхойлно.</span></label>
                           <label className="text-xs font-bold text-slate-700">Салбар сургууль<input name="branchSchool" required className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-normal outline-none focus:border-blue-500" /></label>
                           <label className="text-xs font-bold text-slate-700">Мэргэжил<input name="major" required className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-normal outline-none focus:border-blue-500" /></label>
-                          <label className="text-xs font-bold text-slate-700">Элссэн он<select name="enrollmentYear" required defaultValue="" className="uninet-select mt-2 w-full"><option value="" disabled>Он сонгоно уу</option>{Array.from({ length: 16 }, (_, index) => new Date().getFullYear() - index).map(year => <option key={year}>{year}</option>)}</select></label>
+                          <label className="text-xs font-bold text-slate-700">Элссэн он<NativeStyledSelect name="enrollmentYear" required defaultValue="" className="uninet-select mt-2 w-full"><option value="" disabled>Он сонгоно уу</option>{Array.from({ length: 16 }, (_, index) => new Date().getFullYear() - index).map(year => <option key={year}>{year}</option>)}</NativeStyledSelect></label>
                           <label className="text-xs font-bold text-slate-700">UniNet нууц үг<input name="password" type="password" required minLength={12} autoComplete="new-password" className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-normal outline-none focus:border-blue-500" /><span className="mt-1 block text-[10px] font-normal text-slate-400">12+ тэмдэгт, том/жижиг үсэг, тоо, тусгай тэмдэг.</span></label>
                           <label className="text-xs font-bold text-slate-700 md:col-span-2">Нууц үг давтах<input name="confirmPassword" type="password" required minLength={12} autoComplete="new-password" className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-normal outline-none focus:border-blue-500" /></label>
                         </div>

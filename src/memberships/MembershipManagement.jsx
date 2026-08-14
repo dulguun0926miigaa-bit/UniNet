@@ -3,6 +3,7 @@ import { Download, FileSpreadsheet, Upload } from "lucide-react";
 import { ConfirmDialog, EmptyState, ErrorState, LoadingSkeleton, Modal, PageHeader } from "../student/StudentUI.jsx";
 import { membershipService } from "./membershipService.js";
 import StyledSelect from "../ui/StyledSelect.jsx";
+import NativeStyledSelect from "../ui/NativeStyledSelect.jsx";
 
 const fieldClass = "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400";
 const labelClass = "block text-xs font-bold text-slate-700";
@@ -323,8 +324,8 @@ function RosterPanel({ onToast, onChanged }) {
 
     <form onSubmit={submitSearch} className="mb-5 grid items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-2 2xl:grid-cols-[minmax(240px,1fr)_minmax(170px,0.7fr)_minmax(190px,0.8fr)_minmax(110px,auto)_minmax(140px,auto)]">
       <label className={labelClass}>Имэйл, нэр, ID<input type="search" value={searchDraft} onChange={event => setSearchDraft(event.target.value)} className={`${fieldClass} mt-2`} /></label>
-      <label className={labelClass}>Төрөл<select value={memberType} onChange={event => { setLoading(true); setPage(1); setMemberType(event.target.value); }} className={`${fieldClass} mt-2`}><option value="ALL">Бүгд</option><option value="STUDENT">STUDENT</option><option value="STAFF">STAFF</option></select></label>
-      <label className={labelClass}>Roster төлөв<select value={enrollmentStatus} onChange={event => { setLoading(true); setPage(1); setEnrollmentStatus(event.target.value); }} className={`${fieldClass} mt-2`}><option value="ALL">Бүгд</option>{["ACTIVE", "GRADUATED", "SUSPENDED", "WITHDRAWN", "UNKNOWN"].map(value => <option key={value}>{value}</option>)}</select></label>
+      <label className={labelClass}>Төрөл<NativeStyledSelect value={memberType} onChange={event => { setLoading(true); setPage(1); setMemberType(event.target.value); }} className={`${fieldClass} mt-2`}><option value="ALL">Бүгд</option><option value="STUDENT">STUDENT</option><option value="STAFF">STAFF</option></NativeStyledSelect></label>
+      <label className={labelClass}>Roster төлөв<NativeStyledSelect value={enrollmentStatus} onChange={event => { setLoading(true); setPage(1); setEnrollmentStatus(event.target.value); }} className={`${fieldClass} mt-2`}><option value="ALL">Бүгд</option>{["ACTIVE", "GRADUATED", "SUSPENDED", "WITHDRAWN", "UNKNOWN"].map(value => <option key={value}>{value}</option>)}</NativeStyledSelect></label>
       <button type="submit" className="w-full rounded-xl bg-slate-900 px-4 py-3 text-xs font-bold text-white">Хайх</button>
       <button type="button" onClick={exportRoster} disabled={busy === "export"} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold"><Download className="h-4 w-4" />Roster CSV</button>
     </form>
@@ -368,10 +369,10 @@ function InviteDialog({ role, universities, universityId, onClose, onCreated }) 
         {error && <div role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
         <div className="grid gap-4 md:grid-cols-2">
           {isPlatform && <label className={`${labelClass} md:col-span-2`}>Их сургууль *
-            <select name="universityId" required defaultValue={universityId} className={`${fieldClass} mt-2`}>
+            <NativeStyledSelect name="universityId" required defaultValue={universityId} className={`${fieldClass} mt-2`}>
               <option value="" disabled>Сургууль сонгоно уу</option>
               {universities.map(university => <option key={university.id} value={university.id} disabled={university.status !== "ACTIVE"}>{university.name} — {university.domain}{university.status !== "ACTIVE" ? ` (${university.status})` : ""}</option>)}
-            </select>
+            </NativeStyledSelect>
           </label>}
           <label className={`${labelClass} ${isPlatform ? "md:col-span-2" : ""}`}>Сургуулийн имэйл *
             <input name="email" type="email" required autoFocus placeholder={isPlatform ? "admin@university.edu.mn" : "staff@university.edu.mn"} className={`${fieldClass} mt-2`} />
@@ -436,11 +437,11 @@ function InvitationPanel({ role, universities = [], onToast, onChanged }) {
     <>
       <form onSubmit={event => { event.preventDefault(); setLoading(true); setError(""); setPage(1); setSearch(searchDraft.trim()); }} className="mb-5 rounded-2xl border border-slate-200 bg-white p-4">
         <div className="grid items-end gap-3 md:grid-cols-2 2xl:grid-cols-[minmax(240px,1fr)_minmax(170px,.8fr)_minmax(170px,.8fr)_minmax(140px,.7fr)_minmax(110px,auto)_minmax(150px,auto)]">
-          {isPlatform && <label className={labelClass}>Их сургууль<select value={universityId} onChange={event => { setLoading(true); setError(""); setUniversityId(event.target.value); setPage(1); }} className={`${fieldClass} mt-2`}>{universities.map(item => <option key={item.id} value={item.id}>{item.name} · {item.domain}</option>)}</select></label>}
+          {isPlatform && <label className={labelClass}>Их сургууль<NativeStyledSelect value={universityId} onChange={event => { setLoading(true); setError(""); setUniversityId(event.target.value); setPage(1); }} className={`${fieldClass} mt-2`}>{universities.map(item => <option key={item.id} value={item.id}>{item.name} · {item.domain}</option>)}</NativeStyledSelect></label>}
           <label className={labelClass}>Имэйл хайх<input type="search" value={searchDraft} onChange={event => setSearchDraft(event.target.value)} placeholder="name@domain.edu.mn" className={`${fieldClass} mt-2`} /></label>
-          <label className={labelClass}>Төлөв<select value={status} onChange={event => { setLoading(true); setStatus(event.target.value); setPage(1); }} className={`${fieldClass} mt-2`}><option value="ALL">Бүх төлөв</option>{["PENDING", "ACCEPTED", "REVOKED", "EXPIRED"].map(item => <option key={item} value={item}>{statusLabels[item]}</option>)}</select></label>
-          <label className={labelClass}>Эрэмбэ<select value={sortBy} onChange={event => { setLoading(true); setSortBy(event.target.value); setPage(1); }} className={`${fieldClass} mt-2`}><option value="createdAt">Үүсгэсэн огноо</option><option value="expiresAt">Дуусах огноо</option><option value="email">Имэйл</option></select></label>
-          <label className={labelClass}>Чиглэл<select value={sortOrder} onChange={event => { setLoading(true); setSortOrder(event.target.value); setPage(1); }} className={`${fieldClass} mt-2`}><option value="desc">Буурах</option><option value="asc">Өсөх</option></select></label>
+          <label className={labelClass}>Төлөв<NativeStyledSelect value={status} onChange={event => { setLoading(true); setStatus(event.target.value); setPage(1); }} className={`${fieldClass} mt-2`}><option value="ALL">Бүх төлөв</option>{["PENDING", "ACCEPTED", "REVOKED", "EXPIRED"].map(item => <option key={item} value={item}>{statusLabels[item]}</option>)}</NativeStyledSelect></label>
+          <label className={labelClass}>Эрэмбэ<NativeStyledSelect value={sortBy} onChange={event => { setLoading(true); setSortBy(event.target.value); setPage(1); }} className={`${fieldClass} mt-2`}><option value="createdAt">Үүсгэсэн огноо</option><option value="expiresAt">Дуусах огноо</option><option value="email">Имэйл</option></NativeStyledSelect></label>
+          <label className={labelClass}>Чиглэл<NativeStyledSelect value={sortOrder} onChange={event => { setLoading(true); setSortOrder(event.target.value); setPage(1); }} className={`${fieldClass} mt-2`}><option value="desc">Буурах</option><option value="asc">Өсөх</option></NativeStyledSelect></label>
           <button type="submit" className="w-full rounded-xl border border-slate-200 px-4 py-3 text-xs font-bold">Хайх</button>
           <button type="button" onClick={() => setShowInvite(true)} disabled={isPlatform && activeUniversity?.status !== "ACTIVE" && universities.every(item => item.status !== "ACTIVE")} className="w-full rounded-xl bg-blue-600 px-4 py-3 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">+ Урилга илгээх</button>
         </div>

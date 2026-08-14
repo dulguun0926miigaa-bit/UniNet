@@ -16,7 +16,7 @@ function objectValue(value) {
 export function normalizeUiPreferences(value = {}) {
   return {
     appearance: { ...defaultUiPreferences.appearance, ...objectValue(value.appearance) },
-    locale: { ...defaultUiPreferences.locale, ...objectValue(value.locale) },
+    locale: { ...defaultUiPreferences.locale, ...objectValue(value.locale), language: "Монгол" },
     accessibility: { ...defaultUiPreferences.accessibility, ...objectValue(value.accessibility) },
   };
 }
@@ -47,7 +47,7 @@ export function applyUiPreferences(value, { persist = false, announce = true } =
   root.dataset.underlineLinks = String(Boolean(activePreferences.accessibility.underlineLinks));
   root.dataset.focusIndicator = String(activePreferences.accessibility.focusIndicator !== false);
   root.dataset.reducedMotion = String(Boolean(activePreferences.appearance.reducedMotion || activePreferences.accessibility.reducedMotion));
-  root.lang = activePreferences.locale.language === "English" ? "en" : "mn";
+  root.lang = "mn";
   root.style.colorScheme = theme;
   if (persist) window.localStorage.setItem(storageKey, JSON.stringify(activePreferences));
   if (announce) window.dispatchEvent(new CustomEvent("uninet:preferences-changed", { detail: activePreferences }));
@@ -66,7 +66,7 @@ export function initializeUiPreferences() {
 }
 
 function formatterLocale() {
-  return activePreferences.locale.language === "English" ? "en-US" : "mn-MN";
+  return "mn-MN";
 }
 
 function dateParts(value) {

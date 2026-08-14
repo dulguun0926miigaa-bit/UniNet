@@ -11,6 +11,7 @@ import { errorScreenStatus, mongolianErrorMessage } from "../errors/errorMessage
 import StyledSelect from "../ui/StyledSelect.jsx";
 import { startQrCameraScanner } from "./qrCameraScanner.js";
 import { formatDate, formatDateTime, toIsoFromLocalDateTime, toLocalDateTimeInput } from "../settings/uiPreferences.js";
+import NativeStyledSelect from "../ui/NativeStyledSelect.jsx";
 
 const roleConfig = {
   STAFF: { base: "/staff", routes: staffRoutes, title: "Staff Dashboard", permission: "CREATE_CONTENT" },
@@ -183,7 +184,7 @@ function ContentEditor({ content, onSaved, onDelete, onError }) {
   return <form onSubmit={save} className="space-y-4">
     <div className="grid gap-4 md:grid-cols-2">
       <label className="text-xs font-bold">Гарчиг *<input required minLength="3" value={title} onChange={event => setTitle(event.target.value)} className={inputClass} /></label>
-      <label className="text-xs font-bold">Visibility<select value={visibility} onChange={event => setVisibility(event.target.value)} className={inputClass}>{["PRIVATE", "PARTNERS", "NETWORK", "PUBLIC"].map(value => <option key={value}>{value}</option>)}</select></label>
+      <label className="text-xs font-bold">Visibility<NativeStyledSelect value={visibility} onChange={event => setVisibility(event.target.value)} className={inputClass}>{["PRIVATE", "PARTNERS", "NETWORK", "PUBLIC"].map(value => <option key={value}>{value}</option>)}</NativeStyledSelect></label>
       <label className="text-xs font-bold md:col-span-2">Товч тайлбар *<input required minLength="3" value={shortDescription} onChange={event => setShortDescription(event.target.value)} className={inputClass} /></label>
       <label className="text-xs font-bold md:col-span-2">Дэлгэрэнгүй *<textarea required minLength="3" rows="5" value={description} onChange={event => setDescription(event.target.value)} className={inputClass} /></label>
       <label className="text-xs font-bold">Ангилал<input value={category} onChange={event => setCategory(event.target.value)} className={inputClass} /></label>
@@ -193,10 +194,10 @@ function ContentEditor({ content, onSaved, onDelete, onError }) {
         <label className="text-xs font-bold">Эхлэх огноо, цаг *<input type="datetime-local" required value={startsAt} onChange={event => setStartsAt(event.target.value)} className={inputClass} /></label>
         <label className="text-xs font-bold">Дуусах огноо, цаг *<input type="datetime-local" required min={startsAt || undefined} value={endsAt} onChange={event => setEndsAt(event.target.value)} className={inputClass} /></label>
         <label className="text-xs font-bold">Багтаамж<input type="number" min="1" value={capacity} onChange={event => setCapacity(event.target.value)} className={inputClass} /></label>
-        <label className="text-xs font-bold">Тасалбарын төрөл<select value={pricingType} onChange={event => setPricingType(event.target.value)} className={inputClass}><option value="FREE">FREE · Үнэгүй</option><option value="PAID">PAID · Төлбөртэй</option></select></label>
+        <label className="text-xs font-bold">Тасалбарын төрөл<NativeStyledSelect value={pricingType} onChange={event => setPricingType(event.target.value)} className={inputClass}><option value="FREE">FREE · Үнэгүй</option><option value="PAID">PAID · Төлбөртэй</option></NativeStyledSelect></label>
         {pricingType === "PAID" && <>
           <label className="text-xs font-bold">Тасалбарын үнэ<input type="number" min="1" step="1" required value={priceAmount} onChange={event => setPriceAmount(event.target.value)} className={inputClass} /></label>
-          <label className="text-xs font-bold">Валют<select value={currency} onChange={event => setCurrency(event.target.value)} className={inputClass}><option value="MNT">MNT · ₮</option></select></label>
+          <label className="text-xs font-bold">Валют<NativeStyledSelect value={currency} onChange={event => setCurrency(event.target.value)} className={inputClass}><option value="MNT">MNT · ₮</option></NativeStyledSelect></label>
         </>}
       </>}
     </div>
@@ -428,16 +429,16 @@ function CreateContent({ onToast, user, partnerships = [], onSaved }) {
               <label className="text-xs font-bold">Дуусах огноо, цаг *<input type="datetime-local" min={startsAt || undefined} value={endsAt} onChange={event => setEndsAt(event.target.value)} required className={fieldClass} /></label>
               <label className="text-xs font-bold">Байршил<input value={location} onChange={event => setLocation(event.target.value)} className={fieldClass} /></label>
               <label className="text-xs font-bold">Багтаамж<input type="number" value={capacity} onChange={event => setCapacity(event.target.value)} min="1" className={fieldClass} /></label>
-              <label className="text-xs font-bold">Тасалбарын төрөл<select value={pricingType} onChange={event => setPricingType(event.target.value)} className={fieldClass}><option value="FREE">FREE · Үнэгүй</option><option value="PAID">PAID · Төлбөртэй</option></select></label>
+              <label className="text-xs font-bold">Тасалбарын төрөл<NativeStyledSelect value={pricingType} onChange={event => setPricingType(event.target.value)} className={fieldClass}><option value="FREE">FREE · Үнэгүй</option><option value="PAID">PAID · Төлбөртэй</option></NativeStyledSelect></label>
               {pricingType === "PAID" && <>
                 <label className="text-xs font-bold">Тасалбарын үнэ *<input type="number" min="1" step="1" value={priceAmount} onChange={event => setPriceAmount(event.target.value)} placeholder="25000" className={fieldClass} /></label>
-                <label className="text-xs font-bold">Валют<select value={currency} onChange={event => setCurrency(event.target.value)} className={fieldClass}><option value="MNT">MNT · ₮</option></select></label>
+                <label className="text-xs font-bold">Валют<NativeStyledSelect value={currency} onChange={event => setCurrency(event.target.value)} className={fieldClass}><option value="MNT">MNT · ₮</option></NativeStyledSelect></label>
               </>}
             </>}
             {["INTERNSHIP", "JOB"].includes(type) && <>
               <label className="text-xs font-bold">Байгууллага<input value={organization} onChange={event => setOrganization(event.target.value)} className={fieldClass} /></label>
               <label className="text-xs font-bold">Deadline<input type="date" value={deadlineAt} onChange={event => setDeadlineAt(event.target.value)} className={fieldClass} /></label>
-              <label className="text-xs font-bold">Work mode<select value={mode} onChange={event => setMode(event.target.value)} className={fieldClass}><option>On-site</option><option>Hybrid</option><option>Remote</option></select></label>
+              <label className="text-xs font-bold">Work mode<NativeStyledSelect value={mode} onChange={event => setMode(event.target.value)} className={fieldClass}><option>On-site</option><option>Hybrid</option><option>Remote</option></NativeStyledSelect></label>
               <label className="text-xs font-bold">Цалин / нөхөн олговор<input value={compensation} onChange={event => setCompensation(event.target.value)} className={fieldClass} /></label>
               <label className="md:col-span-2 text-xs font-bold">Requirements<textarea value={requirements} onChange={event => setRequirements(event.target.value)} rows="5" className={fieldClass} /></label>
             </>}
@@ -622,12 +623,12 @@ function StaffFormsBuilder({ onToast }) {
                 <label className="mt-4 block text-xs font-bold text-slate-600">Формын тайлбар <span className="text-rose-600">*</span><textarea value={description} onChange={event => { setDescription(event.target.value); setError(""); }} placeholder="Судалгааны зорилго, тайлбар" aria-label="Формын тайлбар" rows="2" className="mt-2 w-full resize-none border-b border-slate-200 pb-2 text-sm font-normal text-slate-600 outline-none focus:border-violet-600" /></label>
                 <div className="mt-5 grid gap-3 sm:grid-cols-[180px_1fr] sm:items-center">
                   <label className="text-xs font-bold text-slate-700">Харагдах хүрээ
-                    <select value={visibility} onChange={event => setVisibility(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold outline-none focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10">
+                    <NativeStyledSelect value={visibility} onChange={event => setVisibility(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold outline-none focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10">
                       <option value="PRIVATE">PRIVATE</option>
                       <option value="PARTNERS">PARTNERS</option>
                       <option value="NETWORK">NETWORK</option>
                       <option value="PUBLIC">PUBLIC</option>
-                    </select>
+                    </NativeStyledSelect>
                   </label>
                   <p className="rounded-xl bg-slate-50 p-3 text-[11px] leading-relaxed text-slate-500">{visibility === "PRIVATE" ? "Зөвхөн өөрийн сургуулийн оюутнууд харна." : visibility === "PARTNERS" ? "Өөрийн сургууль болон идэвхтэй түнш сургуулиуд харна." : visibility === "NETWORK" ? "UniNet сүлжээний бүх идэвхтэй оюутан харна." : "Бүх UniNet хэрэглэгчид харах нээлттэй хүрээ."}</p>
                 </div>
@@ -685,7 +686,7 @@ function StaffFormsBuilder({ onToast }) {
 
 function FormQuestionPreview({ question, index }) {
   const label = <h3 className="font-display text-sm font-bold text-slate-900">{index + 1}. {question.title || "Гарчиггүй асуулт"}{question.required && <span className="ml-1 text-rose-600">*</span>}</h3>;
-  return <section className="rounded-2xl border border-slate-200 bg-white p-5">{label}<div className="mt-4">{question.type === "PARAGRAPH" ? <textarea disabled rows="3" placeholder="Таны хариулт" className="w-full rounded-xl border border-slate-200 p-3 text-sm" /> : question.type === "SHORT_TEXT" ? <input disabled placeholder="Таны хариулт" className="w-full border-b border-slate-200 py-2 text-sm" /> : question.type === "RATING" ? <div className="flex gap-2">{[1,2,3,4,5].map(value => <button disabled key={value} className="h-10 w-10 rounded-full border border-slate-200 text-xs font-bold">{value}</button>)}</div> : question.type === "DROPDOWN" ? <select disabled className="w-full rounded-xl border border-slate-200 p-3 text-sm"><option>Сонгох</option>{question.options.map(option => <option key={option}>{option}</option>)}</select> : <div className="space-y-3">{question.options.map(option => <label key={option} className="flex gap-3 text-sm text-slate-600"><input disabled type={question.type === "CHECKBOXES" ? "checkbox" : "radio"} />{option}</label>)}</div>}</div></section>;
+  return <section className="rounded-2xl border border-slate-200 bg-white p-5">{label}<div className="mt-4">{question.type === "PARAGRAPH" ? <textarea disabled rows="3" placeholder="Таны хариулт" className="w-full rounded-xl border border-slate-200 p-3 text-sm" /> : question.type === "SHORT_TEXT" ? <input disabled placeholder="Таны хариулт" className="w-full border-b border-slate-200 py-2 text-sm" /> : question.type === "RATING" ? <div className="flex gap-2">{[1,2,3,4,5].map(value => <button disabled key={value} className="h-10 w-10 rounded-full border border-slate-200 text-xs font-bold">{value}</button>)}</div> : question.type === "DROPDOWN" ? <NativeStyledSelect disabled className="w-full rounded-xl border border-slate-200 p-3 text-sm"><option>Сонгох</option>{question.options.map(option => <option key={option}>{option}</option>)}</NativeStyledSelect> : <div className="space-y-3">{question.options.map(option => <label key={option} className="flex gap-3 text-sm text-slate-600"><input disabled type={question.type === "CHECKBOXES" ? "checkbox" : "radio"} />{option}</label>)}</div>}</div></section>;
 }
 
 function ApprovalPage({ data, admin, onAction }) {

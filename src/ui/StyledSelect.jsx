@@ -8,7 +8,7 @@ function normalizeOptions(options = []) {
     }
     return {
       value: String(option.value),
-      label: String(option.label ?? option.value),
+      label: option.label ?? String(option.value),
       disabled: Boolean(option.disabled),
     };
   });
@@ -17,6 +17,7 @@ function normalizeOptions(options = []) {
 export default function StyledSelect({
   label,
   value,
+  defaultValue = "",
   onChange,
   options = [],
   placeholder = "Сонгох",
@@ -25,6 +26,8 @@ export default function StyledSelect({
   buttonClassName = "",
   menuClassName = "",
   ariaLabel,
+  name,
+  required = false,
 }) {
   const id = useId();
   const rootRef = useRef(null);
@@ -32,9 +35,20 @@ export default function StyledSelect({
   const optionRefs = useRef([]);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [uncontrolledValue, setUncontrolledValue] = useState(String(defaultValue ?? ""));
   const normalized = useMemo(() => normalizeOptions(options), [options]);
-  const selectedIndex = normalized.findIndex(option => option.value === String(value ?? ""));
+  const effectiveValue = value === undefined ? uncontrolledValue : String(value ?? "");
+  const selectedIndex = normalized.findIndex(option => option.value === effectiveValue);
   const selected = selectedIndex >= 0 ? normalized[selectedIndex] : null;
+
+  useEffect(() => {
+    if (value !== undefined) return undefined;
+    const form = rootRef.current?.closest("form");
+    if (!form) return undefined;
+    const reset = () => setUncontrolledValue(String(defaultValue ?? ""));
+    form.addEventListener("reset", reset);
+    return () => form.removeEventListener("reset", reset);
+  }, [defaultValue, value]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -67,6 +81,7 @@ export default function StyledSelect({
 
   const choose = option => {
     if (option.disabled) return;
+    if (value === undefined) setUncontrolledValue(option.value);
     onChange(option.value);
     setOpen(false);
     window.requestAnimationFrame(() => buttonRef.current?.focus());
@@ -87,6 +102,23 @@ export default function StyledSelect({
 
   return (
     <div ref={rootRef} className={`relative min-w-[150px] ${open ? "z-[300]" : "z-20"} ${className}`}>
+      {name && (
+        <input
+          type="text"
+          name={name}
+          value={effectiveValue}
+          required={required}
+          disabled={disabled}
+          readOnly
+          tabIndex={-1}
+          onInvalid={event => {
+            event.preventDefault();
+            buttonRef.current?.focus();
+            setOpen(true);
+          }}
+          className="pointer-events-none absolute h-px w-px opacity-0"
+        />
+      )}
       {label && (
         <label id={`${id}-label`} className="mb-1.5 block text-[11px] font-bold text-slate-600">
           {label}
@@ -98,6 +130,7 @@ export default function StyledSelect({
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-required={required || undefined}
         aria-labelledby={label ? `${id}-label ${id}-value` : undefined}
         aria-label={!label ? ariaLabel : undefined}
         onClick={() => setOpen(current => !current)}
@@ -120,7 +153,7 @@ export default function StyledSelect({
         <div className={`absolute left-0 right-0 z-[310] mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_45px_rgba(15,23,42,0.22)] ${menuClassName}`}>
           <div role="listbox" aria-labelledby={label ? `${id}-label` : undefined} className="max-h-64 overflow-y-auto py-0.5">
             {normalized.map((option, index) => {
-              const isSelected = option.value === String(value ?? "");
+              const isSelected = option.value === effectiveValue;
               return (
                 <button
                   key={`${option.value}-${index}`}
