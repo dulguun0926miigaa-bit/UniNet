@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { assertApplicationTransition, assertContentTransition } from '../src/operations/operations.routes.js'
+import { assertApplicationTransition, assertContentTransition, contentStatusForAction } from '../src/operations/operations.routes.js'
 
 describe('content lifecycle policy', () => {
   it('accepts review/publish/archive path', () => {
@@ -12,6 +12,11 @@ describe('content lifecycle policy', () => {
   it('rejects skipping approval states and reopening an archive', () => {
     expect(() => assertContentTransition('PENDING_APPROVAL', 'PUBLISHED')).toThrowError(/шилжих боломжгүй/)
     expect(() => assertContentTransition('ARCHIVED', 'PUBLISHED')).toThrowError(/шилжих боломжгүй/)
+  })
+
+  it('maps approve actions to APPROVED without skipping directly to publication', () => {
+    expect(contentStatusForAction('APPROVE')).toBe('APPROVED')
+    expect(contentStatusForAction('PUBLISH')).toBe('PUBLISHED')
   })
 })
 

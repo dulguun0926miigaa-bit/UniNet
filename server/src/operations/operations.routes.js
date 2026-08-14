@@ -170,6 +170,16 @@ function assertContentTransition(fromStatus, toStatus) {
   }
 }
 
+function contentStatusForAction(action) {
+  return ({
+    APPROVE: 'APPROVED',
+    PUBLISH: 'PUBLISHED',
+    REJECT: 'REJECTED',
+    REQUEST_CHANGES: 'CHANGES_REQUESTED',
+    ARCHIVE: 'ARCHIVED',
+  })[action]
+}
+
 
 async function changeContentStatus(req, existing, status, reason) {
   assertContentTransition(existing.status, status)
@@ -851,14 +861,13 @@ router.post('/action', requireIdempotency, async (req, res, next) => {
     if (!input.id || !input.resourceType) throw new AppError('Үйлдлийн target id болон resourceType шаардлагатай.', 422, 'ACTION_TARGET_REQUIRED')
 
     if (input.resourceType === 'CONTENT') {
-      const requestedStatus = ({ APPROVE: 'APPROVED', PUBLISH: 'PUBLISHED', REJECT: 'REJECTED', REQUEST_CHANGES: 'CHANGES_REQUESTED', ARCHIVE: 'ARCHIVED' })[action]
+      const requestedStatus = contentStatusForAction(action)
       if (!requestedStatus) throw new AppError('Дэмжигдээгүй контентын үйлдэл.', 422, 'UNSUPPORTED_ACTION')
       const content = await prisma.content.findUnique({ where: { id: input.id } })
       if (!content) throw new AppError('Контент олдсонгүй.', 404, 'CONTENT_NOT_FOUND')
-      const status = action === 'APPROVE' && content.type === 'EVENT' ? 'PUBLISHED' : requestedStatus
-      assertContentManagement(req.auth.user, content, 'status', status)
-      const updated = await changeContentStatus(req, content, status, input.reason)
-      if (status === 'PUBLISHED' && content.status !== 'PUBLISHED') await notifyPublishedContent(updated)
+      assertContentManagement(req.auth.user, content, 'status', requestedStatus)
+      const updated = await changeContentStatus(req, content, requestedStatus, input.reason)
+      if (requestedStatus === 'PUBLISHED' && content.status !== 'PUBLISHED') await notifyPublishedContent(updated)
       return res.json({ ok: true, content: updated })
     }
 
@@ -924,4 +933,4 @@ router.post('/action', requireIdempotency, async (req, res, next) => {
   } catch (error) { next(error) }
 })
 
-export { assertApplicationTransition, assertContentTransition, contentInput, contentUpdateInput, router as operationsRouter }
+export { assertApplicationTransition, assertContentTransition, contentInput, contentStatusForAction, contentUpdateInput, router as operationsRouter }
