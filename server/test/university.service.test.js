@@ -29,6 +29,36 @@ describe('university onboarding and domain verification service', () => {
     await expect(service.get(universityAdmin, 'f7515579-e6d3-45e6-8459-7756c9022a6f')).rejects.toMatchObject({ status: 403, code: 'TENANT_ACCESS_DENIED' })
   })
 
+  it('lets a University Admin persist its own branding and contact profile only', async () => {
+    let updateCall
+    const service = createUniversityService({
+      update: async (id, input, audit) => {
+        updateCall = { id, input, audit }
+        return { ...detail, ...input }
+      },
+    })
+    const result = await service.updateOwnProfile(universityAdmin, {
+      name: 'Example University Updated',
+      shortName: 'EUU',
+      slug: 'must-not-be-changed-by-tenant-admin',
+      logoUrl: 'https://cdn.example.edu.mn/logo.png',
+      websiteUrl: 'https://example.edu.mn',
+      contactEmail: 'hello@example.edu.mn',
+      primaryColor: '#123ABC',
+      secondaryColor: '#ABC123',
+    }, { ipAddress: '127.0.0.1', userAgent: 'vitest' })
+
+    expect(updateCall.id).toBe(universityId)
+    expect(updateCall.input).not.toHaveProperty('slug')
+    expect(updateCall.input).toMatchObject({ logoUrl: 'https://cdn.example.edu.mn/logo.png', primaryColor: '#123ABC' })
+    expect(updateCall.audit).toMatchObject({ actorId: universityAdmin.id, ipAddress: '127.0.0.1' })
+    expect(result.university.shortName).toBe('EUU')
+    await expect(service.updateOwnProfile(platformActor, { name: 'Forbidden update' })).rejects.toMatchObject({
+      status: 403,
+      code: 'UNIVERSITY_ADMIN_REQUIRED',
+    })
+  })
+
   it('keeps university creation restricted to Platform Super Admin', async () => {
     const service = createUniversityService({ create: async input => ({ ...detail, ...input }) })
     await expect(service.create(universityAdmin, {

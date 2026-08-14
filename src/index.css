@@ -1,5 +1,50 @@
 @import "tailwindcss";
 
+html[data-font-size="small"] { font-size: 15px; }
+html[data-font-size="normal"] { font-size: 16px; }
+html[data-font-size="large"] { font-size: 18px; }
+
+html[data-density="compact"] main { --uninet-density-scale: .82; }
+html[data-density="compact"] main :where(.p-5, .p-6, .p-7, .p-8) { padding: calc(1rem * var(--uninet-density-scale)); }
+
+html[data-theme="dark"] {
+  background: rgb(2 6 23);
+  color: rgb(226 232 240);
+}
+
+html[data-theme="dark"] body,
+html[data-theme="dark"] #root,
+html[data-theme="dark"] .bg-slate-50 { background-color: rgb(2 6 23) !important; }
+html[data-theme="dark"] .bg-white,
+html[data-theme="dark"] .bg-white\/90 { background-color: rgb(15 23 42) !important; }
+html[data-theme="dark"] .bg-slate-100 { background-color: rgb(30 41 59) !important; }
+html[data-theme="dark"] :where(.text-slate-900, .text-slate-800, .text-slate-700) { color: rgb(241 245 249) !important; }
+html[data-theme="dark"] :where(.text-slate-600, .text-slate-500, .text-slate-400) { color: rgb(148 163 184) !important; }
+html[data-theme="dark"] :where(.border-slate-100, .border-slate-200, .border-slate-300) { border-color: rgb(51 65 85) !important; }
+html[data-theme="dark"] :where(input, select, textarea) {
+  border-color: rgb(51 65 85) !important;
+  background-color: rgb(15 23 42) !important;
+  color: rgb(241 245 249) !important;
+}
+html[data-theme="dark"] :where(input, textarea)::placeholder { color: rgb(100 116 139); }
+html[data-theme="dark"] .shadow-sm,
+html[data-theme="dark"] .shadow-md,
+html[data-theme="dark"] .shadow-lg,
+html[data-theme="dark"] .shadow-xl,
+html[data-theme="dark"] .shadow-2xl { --tw-shadow-color: rgb(0 0 0 / 45%); }
+
+html[data-high-contrast="true"] { filter: contrast(1.12); }
+html[data-underline-links="true"] a { text-decoration: underline; text-underline-offset: .18em; }
+html[data-focus-indicator="false"] :where(a, button, input, select, textarea, summary):focus-visible { outline: none; }
+html[data-reduced-motion="true"] *,
+html[data-reduced-motion="true"] *::before,
+html[data-reduced-motion="true"] *::after {
+  scroll-behavior: auto !important;
+  animation-duration: .01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .01ms !important;
+}
+
 @keyframes uninet-popover-in {
   from { opacity: 0; transform: translateY(-8px) scale(0.97); }
   to { opacity: 1; transform: translateY(0) scale(1); }

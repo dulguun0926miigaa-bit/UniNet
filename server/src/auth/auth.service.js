@@ -51,6 +51,9 @@ const publicUser = (user) => ({
     name: user.university.name,
     shortName: user.university.shortName,
     slug: user.university.slug,
+    logoUrl: user.university.logoUrl,
+    primaryColor: user.university.primaryColor,
+    secondaryColor: user.university.secondaryColor,
   },
   studentProfile: user.studentProfile,
   staffProfile: user.staffProfile,
@@ -251,7 +254,7 @@ export function createAuthService(repository = authRepository, mailer = emailSer
       })
       await auditAuth(repository, { action: 'ACCOUNT_REGISTERED', user, context })
       if (!env.emailVerificationEnabled) {
-        const completion = await repository.completeRegistrationWithoutEmailVerification(user.id)
+        const completion = /** @type {any} */ (await repository.completeRegistrationWithoutEmailVerification(user.id))
         if (completion.status !== 'completed' && completion.status !== 'alreadyCompleted') {
           throw new AppError('Бүртгэлийн төлөвийг шинэчилж чадсангүй.', 500, 'REGISTRATION_COMPLETION_FAILED')
         }
@@ -370,7 +373,7 @@ export function createAuthService(repository = authRepository, mailer = emailSer
       }
       await loginSecurity.recordSuccess(input.email, context?.ipAddress)
       if (user.status === 'PENDING_VERIFICATION' && !env.emailVerificationEnabled) {
-        const completion = await repository.completeRegistrationWithoutEmailVerification(user.id)
+        const completion = /** @type {any} */ (await repository.completeRegistrationWithoutEmailVerification(user.id))
         if (completion.status === 'completed' || completion.status === 'alreadyCompleted') user = completion.user
       }
       if (user.status === 'PENDING_VERIFICATION') {
@@ -378,7 +381,7 @@ export function createAuthService(repository = authRepository, mailer = emailSer
         throw new AppError('Имэйлээ баталгаажуулна уу.', 403, 'EMAIL_VERIFICATION_REQUIRED')
       }
       if (user.status === 'PENDING_REVIEW' && user.role === 'STUDENT' && user.emailVerifiedAt) {
-        const completion = await repository.completeRegistrationWithoutEmailVerification(user.id)
+        const completion = /** @type {any} */ (await repository.completeRegistrationWithoutEmailVerification(user.id))
         if (completion.status === 'completed' || completion.status === 'alreadyCompleted') user = completion.user
       }
       if (user.status === 'PENDING_REVIEW') {

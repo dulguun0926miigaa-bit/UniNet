@@ -51,7 +51,7 @@ router.get('/stream', async (req, res, next) => {
     const unsubscribe = notificationBus.subscribe(payload.sub, send)
     const heartbeat = setInterval(() => res.write(`: heartbeat ${Date.now()}\n\n`), 25_000)
     req.on('close', () => { clearInterval(heartbeat); unsubscribe() })
-  } catch (error) { next(new AppError('Real-time notification token хүчингүй байна.', 401, 'NOTIFICATION_STREAM_TOKEN_INVALID')) }
+  } catch { next(new AppError('Real-time notification token хүчингүй байна.', 401, 'NOTIFICATION_STREAM_TOKEN_INVALID')) }
 })
 
 router.use(authenticate)

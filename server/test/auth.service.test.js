@@ -252,7 +252,7 @@ describe('auth service', () => {
   it('fails closed when required registration policy documents are unavailable', async () => {
     const service = createAuthService({
       findUserByEmail: async () => null,
-      findUniversityDomain: async () => null,
+      findUniversityDomain: async () => ({ isActive: true, isVerified: true, university }),
       findCurrentRequiredPolicies: async () => [],
     })
     await expect(service.register({
@@ -501,27 +501,31 @@ describe('auth service', () => {
     expect(rotated).toBe(false)
   })
 
-  it('returns the same generic password-reset response for known and unknown email addresses', async () => {
+  it('issues a stored OTP challenge only for an eligible Student and keeps the response message generic', async () => {
     const sent = []
     const stored = []
-    const user = { id: 'user-id', email: 'student@test.example', status: 'ACTIVE' }
+    const user = { id: 'user-id', email: 'student@test.example', status: 'ACTIVE', role: 'STUDENT', emailVerifiedAt: new Date(), oauthAccounts: [] }
     const repository = {
       findUserByEmail: async email => email === user.email ? user : null,
-      invalidatePasswordResetTokens: async () => undefined,
-      createPasswordResetToken: async value => { stored.push(value) },
-      deletePasswordResetToken: async () => undefined,
+      findLatestPasswordResetOtpChallenge: async () => null,
+      invalidatePasswordResetOtpChallenges: async () => undefined,
+      createPasswordResetOtpChallenge: async value => { stored.push(value) },
+      deletePasswordResetOtpChallenge: async () => undefined,
     }
-    const mailer = { sendPasswordReset: async value => { sent.push(value) } }
+    const mailer = { sendPasswordResetOtp: async value => { sent.push(value); return { delivered: true } } }
     const service = createAuthService(repository, mailer)
 
     const known = await service.requestPasswordReset({ email: user.email })
     const unknown = await service.requestPasswordReset({ email: 'unknown@test.example' })
 
-    expect(known).toEqual(unknown)
-    expect(known).not.toHaveProperty('token')
+    expect(known.message).toBe(unknown.message)
+    expect(known.challengeToken).toMatch(/^[A-Za-z0-9_-]{40,}$/)
+    expect(unknown).not.toHaveProperty('challengeToken')
     expect(stored).toHaveLength(1)
     expect(sent).toHaveLength(1)
-    expect(stored[0].tokenHash).toBe(hashToken(sent[0].token))
+    expect(stored[0].challengeTokenHash).toBe(hashToken(known.challengeToken))
+    expect(sent[0]).toMatchObject({ to: user.email })
+    expect(sent[0].code).toMatch(/^\d{6}$/)
     expect(stored[0].expiresAt.getTime()).toBeGreaterThan(Date.now())
   })
 

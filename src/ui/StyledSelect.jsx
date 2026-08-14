@@ -58,8 +58,11 @@ export default function StyledSelect({
   useEffect(() => {
     if (!open) return;
     const nextIndex = selectedIndex >= 0 ? selectedIndex : normalized.findIndex(option => !option.disabled);
-    setActiveIndex(nextIndex);
-    window.requestAnimationFrame(() => optionRefs.current[nextIndex]?.focus());
+    const frame = window.requestAnimationFrame(() => {
+      setActiveIndex(nextIndex);
+      optionRefs.current[nextIndex]?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [open, selectedIndex, normalized]);
 
   const choose = option => {

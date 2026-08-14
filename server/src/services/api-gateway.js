@@ -87,11 +87,11 @@ function proxy(req, res, targetBase, targetName, cors) {
     proxyRes.pipe(res)
   })
   proxyReq.setTimeout(env.GATEWAY_UPSTREAM_TIMEOUT_MS, () => {
-    const error = new Error(`Gateway upstream timeout after ${env.GATEWAY_UPSTREAM_TIMEOUT_MS}ms`)
+    const error = /** @type {Error & { code?: string }} */ (new Error(`Gateway upstream timeout after ${env.GATEWAY_UPSTREAM_TIMEOUT_MS}ms`))
     error.code = 'UPSTREAM_TIMEOUT'
     proxyReq.destroy(error)
   })
-  proxyReq.on('error', error => fail(error, error?.code === 'UPSTREAM_TIMEOUT' ? 'UPSTREAM_TIMEOUT' : 'UPSTREAM_UNAVAILABLE'))
+  proxyReq.on('error', error => fail(error, /** @type {Error & { code?: string }} */ (error).code === 'UPSTREAM_TIMEOUT' ? 'UPSTREAM_TIMEOUT' : 'UPSTREAM_UNAVAILABLE'))
   req.on('aborted', () => proxyReq.destroy(new Error('Client request aborted')))
   res.on('close', () => {
     if (!res.writableEnded) proxyReq.destroy(new Error('Client response closed'))

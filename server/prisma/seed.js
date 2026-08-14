@@ -598,7 +598,7 @@ async function main() {
       }
       let demoSurvey = await prisma.survey.findFirst({ where: { createdById: numStaff.id, title: 'Final MVP Student Feedback' } })
       if (!demoSurvey) {
-        demoSurvey = await prisma.survey.create({
+        await prisma.survey.create({
           data: {
             universityId: numUniversity.id, createdById: numStaff.id,
             title: 'Final MVP Student Feedback', description: 'Survey authorization, response болон report demo.',

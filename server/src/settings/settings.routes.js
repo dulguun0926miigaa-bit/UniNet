@@ -1,9 +1,9 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
-import { authenticate } from '../middleware/authenticate.js'
+import { authenticate, requireRole } from '../middleware/authenticate.js'
 import { AppError } from '../utils/app-error.js'
-import { sensitiveReadLimiter, supportMutationLimiter } from '../middleware/rate-limits.js'
+import { searchReadLimiter, sensitiveReadLimiter, supportMutationLimiter } from '../middleware/rate-limits.js'
 import { hashPassword, passwordPolicy, verifyPassword } from '../utils/password.js'
 import { deactivateAccount, requestAccountDeletion } from '../privacy/account-lifecycle.service.js'
 import { requireIdempotency } from '../middleware/idempotency.js'
@@ -11,6 +11,7 @@ import { requireStepUp } from '../middleware/step-up.js'
 import { mfaService } from '../auth/mfa.service.js'
 import { assertPasswordHistory } from '../auth/password-security.js'
 import { env } from '../config/env.js'
+import { createNotification, createNotifications } from '../notifications/notification.service.js'
 
 const router = Router()
 const sections = ['account', 'security', 'notifications', 'privacy', 'appearance', 'locale', 'accessibility']
@@ -22,6 +23,14 @@ const feedbackInput = z.object({
   subject: z.string().trim().min(2).max(200).default('UniNet feedback'),
   message: z.string().trim().min(3).max(5000),
 })
+const feedbackListQuery = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(50).default(20),
+  status: z.enum(['OPEN', 'IN_REVIEW', 'RESOLVED', 'CLOSED']).optional(),
+  search: z.string().trim().max(120).optional(),
+}).strict()
+const feedbackStatusInput = z.object({ status: z.enum(['OPEN', 'IN_REVIEW', 'RESOLVED', 'CLOSED']) }).strict()
+const timezone = z.enum(['Asia/Ulaanbaatar', 'UTC'])
 
 const defaults = {
   security: { twoFactor: false },
@@ -34,6 +43,37 @@ const defaults = {
   appearance: { theme: 'system', density: 'comfortable', reducedMotion: false },
   locale: { language: 'Монгол', timezone: 'Asia/Ulaanbaatar', dateFormat: 'YYYY.MM.DD', hourFormat: '24' },
   accessibility: { fontSize: 'normal', highContrast: false, reducedMotion: false, focusIndicator: true, underlineLinks: false },
+}
+
+const settingsSchemas = {
+  notifications: z.object({
+    inApp: z.boolean(), email: z.boolean(), push: z.boolean(), opportunities: z.boolean(), eventReminder: z.boolean(),
+    applicationStatus: z.boolean(), waitlist: z.boolean(), surveyDeadline: z.boolean(), announcements: z.boolean(),
+    system: z.boolean(), frequency: z.enum(['Шууд', 'Өдөрт нэг удаа', '7 хоногт нэг удаа']),
+  }).strict(),
+  privacy: z.object({
+    profileVisibility: z.enum(['Миний сургууль', 'Зөвхөн би', 'UniNet сүлжээ']),
+    cvSharing: z.enum(['Зөвхөн зөвшөөрсөн өргөдөл', 'Хэзээ ч үгүй']),
+    recommendations: z.boolean(),
+  }).strict(),
+  appearance: z.object({
+    theme: z.enum(['light', 'dark', 'system']),
+    density: z.enum(['compact', 'comfortable']),
+    reducedMotion: z.boolean(),
+  }).strict(),
+  locale: z.object({
+    language: z.enum(['Монгол', 'English']),
+    timezone,
+    dateFormat: z.enum(['YYYY.MM.DD', 'DD/MM/YYYY']),
+    hourFormat: z.enum(['24', '12']),
+  }).strict(),
+  accessibility: z.object({
+    fontSize: z.enum(['small', 'normal', 'large']),
+    highContrast: z.boolean(),
+    reducedMotion: z.boolean(),
+    focusIndicator: z.boolean(),
+    underlineLinks: z.boolean(),
+  }).strict(),
 }
 
 const dateOnly = value => value.toISOString().slice(0, 10).replaceAll('-', '.')
@@ -60,28 +100,60 @@ function browserName(userAgent = '') {
   return 'Browser'
 }
 
-function accountFromUser(user) {
+function accountFromUser(user, storedAccount, locale) {
+  const extra = storedAccount && typeof storedAccount === 'object' && !Array.isArray(storedAccount) ? storedAccount : {}
   const profile = user.studentProfile ?? user.staffProfile
   return {
-    avatar: user.studentProfile?.avatarUrl ?? '',
-    lastName: profile?.lastName ?? '',
-    firstName: profile?.firstName ?? '',
+    avatar: user.studentProfile?.avatarUrl ?? extra.avatar ?? '',
+    lastName: profile?.lastName ?? extra.lastName ?? '',
+    firstName: profile?.firstName ?? extra.firstName ?? '',
     email: user.email,
-    phone: user.studentProfile?.phone ?? '',
+    phone: user.studentProfile?.phone ?? extra.phone ?? '',
     university: user.university?.shortName ?? 'UniNet',
-    department: profile?.department ?? '',
-    major: user.studentProfile?.major ?? '—',
-    enrollmentYear: user.studentProfile?.enrollmentYear ?? '',
-    graduationYear: user.studentProfile?.graduationYear ?? '',
-    timezone: 'Asia/Ulaanbaatar',
+    department: profile?.department ?? extra.department ?? '',
+    major: user.studentProfile?.major ?? extra.major ?? '—',
+    enrollmentYear: user.studentProfile?.enrollmentYear ?? extra.enrollmentYear ?? '',
+    graduationYear: user.studentProfile?.graduationYear ?? extra.graduationYear ?? '',
+    timezone: locale.timezone,
     emailLocked: false,
     emailChangeRequiresVerification: true,
     universityLocked: Boolean(user.universityId),
   }
 }
 
+function feedbackUserScope(actor) {
+  if (actor.role === 'PLATFORM_SUPER_ADMIN') return {}
+  if (!actor.universityId) throw new AppError('University workspace олдсонгүй.', 403, 'TENANT_ACCESS_DENIED')
+  return { universityId: actor.universityId }
+}
+
+function feedbackUserName(user) {
+  const profile = user.studentProfile ?? user.staffProfile
+  return [profile?.lastName, profile?.firstName].filter(Boolean).join(' ') || user.email
+}
+
+function serializeFeedback(feedback) {
+  return {
+    id: feedback.id,
+    category: feedback.category,
+    subject: feedback.subject,
+    message: feedback.message,
+    status: feedback.status,
+    createdAt: feedback.createdAt.toISOString(),
+    updatedAt: feedback.updatedAt.toISOString(),
+    sender: {
+      id: feedback.user.id,
+      name: feedbackUserName(feedback.user),
+      email: feedback.user.email,
+      role: feedback.user.role,
+      university: feedback.user.university?.shortName ?? 'UniNet',
+    },
+  }
+}
+
 async function getSettings(user, currentSessionId) {
-  const [stored, sessions, consentRecords, accountRequests, mfaCredential, recoveryCodesRemaining] = await Promise.all([
+  const [freshUser, stored, sessions, consentRecords, accountRequests, mfaCredential, recoveryCodesRemaining] = await Promise.all([
+    prisma.user.findUnique({ where: { id: user.id }, include: { university: true, studentProfile: true, staffProfile: true } }),
     prisma.userSettings.findUnique({ where: { userId: user.id } }),
     prisma.session.findMany({ where: { userId: user.id, revokedAt: null, expiresAt: { gt: new Date() } }, orderBy: { createdAt: 'desc' } }),
     prisma.consentRecord.findMany({ where: { userId: user.id }, orderBy: { grantedAt: 'desc' }, take: 100 }),
@@ -89,8 +161,10 @@ async function getSettings(user, currentSessionId) {
     prisma.mfaTotpCredential.findUnique({ where: { userId: user.id } }),
     prisma.mfaRecoveryCode.count({ where: { userId: user.id, usedAt: null } }),
   ])
+  const currentUser = freshUser ?? user
+  const locale = mergeSection('locale', stored?.locale)
   return {
-    account: accountFromUser(user),
+    account: accountFromUser(currentUser, stored?.account, locale),
     security: {
       ...mergeSection('security', stored?.security),
       twoFactor: Boolean(mfaCredential?.enabledAt),
@@ -102,7 +176,7 @@ async function getSettings(user, currentSessionId) {
     notifications: mergeSection('notifications', stored?.notifications),
     privacy: mergeSection('privacy', stored?.privacy),
     appearance: mergeSection('appearance', stored?.appearance),
-    locale: mergeSection('locale', stored?.locale),
+    locale,
     accessibility: mergeSection('accessibility', stored?.accessibility),
     devices: sessions.map(session => ({
       id: session.id,
@@ -110,11 +184,13 @@ async function getSettings(user, currentSessionId) {
       browser: browserName(session.userAgent),
       location: session.ipAddress || 'Тодорхойгүй',
       lastActive: dateOnly(session.lastUsedAt ?? session.createdAt),
+      lastActiveAt: (session.lastUsedAt ?? session.createdAt).toISOString(),
       current: session.id === currentSessionId,
     })),
     consentHistory: consentRecords.map(record => ({
       id: record.id,
       date: dateOnly(record.grantedAt),
+      grantedAt: record.grantedAt.toISOString(),
       recipient: record.recipientName,
       purpose: record.purpose,
       data: Array.isArray(record.dataFields) ? record.dataFields.join(', ') : JSON.stringify(record.dataFields),
@@ -147,7 +223,7 @@ async function updateAccount(user, value) {
     major: z.string().trim().max(160).optional(),
     enrollmentYear: z.union([z.coerce.number().int().min(1950).max(new Date().getUTCFullYear()), z.literal('—'), z.literal('')]).optional(),
     graduationYear: z.union([z.coerce.number().int().min(1900).max(2100), z.literal('—'), z.literal('')]).optional(),
-    timezone: z.string().trim().max(80).optional(),
+    timezone: timezone.optional(),
     avatar: z.string().trim().max(2000).optional(),
     email: z.string().email().optional(),
     university: z.string().max(160).optional(),
@@ -158,31 +234,41 @@ async function updateAccount(user, value) {
   if (input.university && ![user.university?.name, user.university?.shortName, 'UniNet'].includes(input.university)) {
     throw new AppError('Баталгаажсан сургуулийг эндээс өөрчлөх боломжгүй.', 409, 'VERIFIED_UNIVERSITY_LOCKED')
   }
-  if (user.role === 'STUDENT') {
-    return prisma.studentProfile.update({
+  return prisma.$transaction(async transaction => {
+    let profile = { id: user.id, firstName: input.firstName, lastName: input.lastName }
+    if (user.role === 'STUDENT') {
+      profile = await transaction.studentProfile.update({
+        where: { userId: user.id },
+        data: {
+          firstName: input.firstName, lastName: input.lastName, phone: input.phone,
+          department: input.department, major: input.major,
+          enrollmentYear: typeof input.enrollmentYear === 'number' ? input.enrollmentYear : null,
+          graduationYear: typeof input.graduationYear === 'number' ? input.graduationYear : null,
+          avatarUrl: input.avatar,
+        },
+      })
+    } else if (user.staffProfile) {
+      profile = await transaction.staffProfile.update({
+        where: { userId: user.id },
+        data: { firstName: input.firstName, lastName: input.lastName, department: input.department },
+      })
+    }
+    const current = await transaction.userSettings.findUnique({ where: { userId: user.id } })
+    const storedAccount = { ...input, email: user.email, university: user.university?.shortName ?? 'UniNet' }
+    const storedLocale = { ...mergeSection('locale', current?.locale), ...(input.timezone ? { timezone: input.timezone } : {}) }
+    await transaction.userSettings.upsert({
       where: { userId: user.id },
-      data: {
-        firstName: input.firstName, lastName: input.lastName, phone: input.phone,
-        department: input.department, major: input.major,
-        enrollmentYear: typeof input.enrollmentYear === 'number' ? input.enrollmentYear : null,
-        graduationYear: typeof input.graduationYear === 'number' ? input.graduationYear : null,
-        avatarUrl: input.avatar,
-      },
+      update: { account: storedAccount, locale: storedLocale },
+      create: { userId: user.id, account: storedAccount, locale: storedLocale },
     })
-  }
-  if (user.staffProfile) {
-    return prisma.staffProfile.update({
-      where: { userId: user.id },
-      data: { firstName: input.firstName, lastName: input.lastName, department: input.department },
-    })
-  }
-  return { id: user.id, firstName: input.firstName, lastName: input.lastName }
+    return profile
+  })
 }
 
 async function updateSection(req, section, value) {
   if (JSON.stringify(value).length > 20000) throw new AppError('Тохиргооны өгөгдөл хэт том байна.', 413, 'SETTINGS_TOO_LARGE')
   if (section === 'account') return updateAccount(req.auth.user, value)
-  let storedValue = value
+  let storedValue = settingsSchemas[section]?.parse(value) ?? value
   if (section === 'security') {
     const security = z.object({
       twoFactor: z.boolean().optional(),
@@ -269,8 +355,122 @@ router.patch('/:section', async (req, res, next) => {
 router.post('/feedback', supportMutationLimiter, requireIdempotency, async (req, res, next) => {
   try {
     const input = feedbackInput.parse(req.body)
-    const feedback = await prisma.feedback.create({ data: { ...input, userId: req.auth.user.id } })
+    const feedback = await prisma.$transaction(async transaction => {
+      const created = await transaction.feedback.create({ data: { ...input, userId: req.auth.user.id } })
+      const recipientScope = /** @type {import('@prisma/client').Prisma.UserWhereInput[]} */ ([
+        { role: 'PLATFORM_SUPER_ADMIN' },
+        ...(req.auth.user.universityId ? [{ role: 'UNIVERSITY_ADMIN', universityId: req.auth.user.universityId }] : []),
+      ])
+      const recipients = await transaction.user.findMany({
+        where: {
+          status: 'ACTIVE',
+          OR: recipientScope,
+        },
+        select: { id: true, role: true, universityId: true },
+      })
+      await createNotifications(transaction, recipients.map(recipient => ({
+        userId: recipient.id,
+        universityId: recipient.universityId,
+        type: 'SYSTEM',
+        title: 'Шинэ санал хүсэлт ирлээ',
+        description: `${input.category} · ${input.subject}`,
+        actionUrl: recipient.role === 'PLATFORM_SUPER_ADMIN' ? '/platform/feedback' : '/admin/feedback',
+      })))
+      await transaction.auditLog.create({
+        data: {
+          actorId: req.auth.user.id,
+          universityId: req.auth.user.universityId,
+          action: 'FEEDBACK_SUBMITTED',
+          resourceType: 'Feedback',
+          resourceId: created.id,
+          resourceName: created.subject,
+          nextData: { category: created.category, status: created.status },
+          severity: 'INFO',
+          ipAddress: req.ip,
+          userAgent: req.get('user-agent')?.slice(0, 500),
+        },
+      })
+      return created
+    })
     res.status(201).json({ feedback: { id: feedback.id, status: feedback.status, createdAt: feedback.createdAt } })
+  } catch (error) { next(error) }
+})
+
+router.get('/feedback/admin', requireRole('UNIVERSITY_ADMIN', 'PLATFORM_SUPER_ADMIN'), searchReadLimiter, async (req, res, next) => {
+  try {
+    const input = feedbackListQuery.parse(req.query)
+    const userScope = feedbackUserScope(req.auth.user)
+    const where = /** @type {import('@prisma/client').Prisma.FeedbackWhereInput} */ ({
+      ...(input.status ? { status: input.status } : {}),
+      user: { is: userScope },
+      ...(input.search ? {
+        OR: [
+          { subject: { contains: input.search, mode: 'insensitive' } },
+          { message: { contains: input.search, mode: 'insensitive' } },
+          { category: { contains: input.search, mode: 'insensitive' } },
+          { user: { is: { ...userScope, email: { contains: input.search, mode: 'insensitive' } } } },
+        ],
+      } : {}),
+    })
+    const [items, total] = await prisma.$transaction([
+      prisma.feedback.findMany({
+        where,
+        include: { user: { include: { university: { select: { shortName: true } }, studentProfile: true, staffProfile: true } } },
+        orderBy: { createdAt: 'desc' },
+        skip: (input.page - 1) * input.pageSize,
+        take: input.pageSize,
+      }),
+      prisma.feedback.count({ where }),
+    ])
+    res.json({
+      feedback: items.map(serializeFeedback),
+      pagination: { page: input.page, pageSize: input.pageSize, total, totalPages: Math.ceil(total / input.pageSize) },
+    })
+  } catch (error) { next(error) }
+})
+
+router.patch('/feedback/admin/:id', requireRole('UNIVERSITY_ADMIN', 'PLATFORM_SUPER_ADMIN'), supportMutationLimiter, async (req, res, next) => {
+  try {
+    const id = z.string().uuid().parse(req.params.id)
+    const input = feedbackStatusInput.parse(req.body)
+    const userScope = feedbackUserScope(req.auth.user)
+    const feedback = await prisma.$transaction(async transaction => {
+      const current = await transaction.feedback.findFirst({
+        where: { id, user: { is: userScope } },
+        include: { user: { include: { university: { select: { shortName: true } }, studentProfile: true, staffProfile: true } } },
+      })
+      if (!current) throw new AppError('Санал хүсэлт олдсонгүй.', 404, 'FEEDBACK_NOT_FOUND')
+      const updated = await transaction.feedback.update({
+        where: { id },
+        data: { status: input.status },
+        include: { user: { include: { university: { select: { shortName: true } }, studentProfile: true, staffProfile: true } } },
+      })
+      await transaction.auditLog.create({
+        data: {
+          actorId: req.auth.user.id,
+          universityId: req.auth.user.universityId,
+          action: 'FEEDBACK_STATUS_UPDATED',
+          resourceType: 'Feedback',
+          resourceId: id,
+          resourceName: current.subject,
+          previousData: { status: current.status },
+          nextData: { status: updated.status },
+          severity: 'INFO',
+          ipAddress: req.ip,
+          userAgent: req.get('user-agent')?.slice(0, 500),
+        },
+      })
+      await createNotification(transaction, {
+        userId: current.userId,
+        universityId: current.user.universityId,
+        type: 'SYSTEM',
+        title: 'Санал хүсэлтийн төлөв шинэчлэгдлээ',
+        description: `${current.subject} · ${input.status}`,
+        actionUrl: '/settings/feedback',
+      })
+      return updated
+    })
+    res.json({ feedback: serializeFeedback(feedback) })
   } catch (error) { next(error) }
 })
 
@@ -311,6 +511,34 @@ router.delete('/devices/:id', requireStepUp(), async (req, res, next) => {
     const updated = await prisma.session.updateMany({ where: { id, userId: req.auth.user.id, revokedAt: null }, data: { revokedAt: new Date() } })
     if (!updated.count) throw new AppError('Session олдсонгүй.', 404, 'SESSION_NOT_FOUND')
     res.json({ ok: true, id })
+  } catch (error) { next(error) }
+})
+
+router.delete('/devices', requireStepUp(), async (req, res, next) => {
+  try {
+    const revokedAt = new Date()
+    const updated = await prisma.$transaction(async transaction => {
+      const sessions = await transaction.session.updateMany({
+        where: { userId: req.auth.user.id, revokedAt: null },
+        data: { revokedAt },
+      })
+      await transaction.auditLog.create({
+        data: {
+          actorId: req.auth.user.id,
+          universityId: req.auth.user.universityId,
+          action: 'ALL_SESSIONS_REVOKED',
+          resourceType: 'USER_SECURITY',
+          resourceId: req.auth.user.id,
+          resourceName: req.auth.user.email,
+          nextData: { sessionsRevoked: sessions.count, revokedAt },
+          severity: 'MEDIUM',
+          ipAddress: req.ip,
+          userAgent: req.get('user-agent')?.slice(0, 500),
+        },
+      })
+      return sessions
+    })
+    res.json({ ok: true, sessionsRevoked: updated.count })
   } catch (error) { next(error) }
 })
 

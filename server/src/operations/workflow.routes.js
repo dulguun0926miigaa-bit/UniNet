@@ -52,6 +52,7 @@ const actorName = user => [
   user?.studentProfile?.firstName ?? user?.staffProfile?.firstName,
 ].filter(Boolean).join(' ') || user?.email || '—'
 
+/** @param {import('@prisma/client').Prisma.TransactionClient | typeof prisma} [client] */
 async function audit(req, data, client = prisma) {
   return client.auditLog.create({
     data: {
@@ -64,6 +65,7 @@ async function audit(req, data, client = prisma) {
   })
 }
 
+/** @returns {import('@prisma/client').Prisma.EventRegistrationWhereInput} */
 function registrationSearch(search) {
   if (!search) return {}
   return {
@@ -78,6 +80,7 @@ function registrationSearch(search) {
   }
 }
 
+/** @returns {import('@prisma/client').Prisma.ApplicationWhereInput} */
 function applicationSearch(search) {
   if (!search) return {}
   return {
@@ -168,11 +171,11 @@ router.get('/registrations', searchReadLimiter, async (req, res, next) => {
   try {
     const input = registrationListQuery.parse(req.query)
     const contentScope = managedContentScope(req.auth.user, 'canManageRegistrations', ['EVENT'])
-    const where = {
+    const where = /** @type {import('@prisma/client').Prisma.EventRegistrationWhereInput} */ ({
       content: { is: { ...contentScope, ...(input.eventId ? { id: input.eventId } : {}) } },
       ...(input.status ? { status: toRegistrationDatabaseStatus(input.status) } : {}),
       ...registrationSearch(input.search),
-    }
+    })
     const [total, items, events] = await Promise.all([
       prisma.eventRegistration.count({ where }),
       prisma.eventRegistration.findMany({
@@ -279,11 +282,11 @@ router.get('/applications', searchReadLimiter, async (req, res, next) => {
   try {
     const input = applicationListQuery.parse(req.query)
     const contentScope = managedContentScope(req.auth.user, 'canManageApplications', ['INTERNSHIP', 'JOB', 'RESEARCH'])
-    const where = {
+    const where = /** @type {import('@prisma/client').Prisma.ApplicationWhereInput} */ ({
       content: { is: { ...contentScope, ...(input.contentId ? { id: input.contentId } : {}) } },
       ...(input.status ? { status: input.status } : {}),
       ...applicationSearch(input.search),
-    }
+    })
     const [total, items, opportunities] = await Promise.all([
       prisma.application.count({ where }),
       prisma.application.findMany({

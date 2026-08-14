@@ -25,7 +25,7 @@ import {
 
 const router = Router()
 const uuid = z.string().uuid()
-const contentInput = z.object({
+const contentFields = z.object({
   title: z.string().trim().min(3).max(200),
   shortDescription: z.string().trim().min(3).max(500),
   description: z.string().trim().min(3).max(10000),
@@ -45,7 +45,23 @@ const contentInput = z.object({
   currency: z.string().trim().toUpperCase().length(3).default('MNT'),
   details: z.record(z.string(), z.unknown()).optional(),
 }).strict()
-const contentUpdateInput = contentInput
+const contentInput = contentFields.superRefine((input, context) => {
+  if (input.type === 'EVENT' && (!input.startsAt || !input.endsAt)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: !input.startsAt ? ['startsAt'] : ['endsAt'],
+      message: 'Арга хэмжээний эхлэх болон дуусах огноо, цагийг оруулна уу.',
+    })
+  }
+  if (input.startsAt && input.endsAt && input.endsAt <= input.startsAt) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['endsAt'],
+      message: 'Дуусах огноо, цаг нь эхлэх огноо, цагаас хойш байна.',
+    })
+  }
+})
+const contentUpdateInput = contentFields
   .omit({ status: true })
   .partial()
   .extend({ version: z.number().int().positive() })
@@ -108,6 +124,7 @@ function slugify(title) {
   return `${normalized || 'content'}-${randomBytes(4).toString('hex')}`
 }
 
+/** @returns {{ pricingType: 'FREE' | 'PAID', priceAmount: number, currency: string }} */
 function normalizedPricing(input, existingType = null) {
   const type = input.type ?? existingType
   if (type !== 'EVENT') return { pricingType: 'FREE', priceAmount: 0, currency: 'MNT' }
@@ -140,7 +157,7 @@ function assertContentTransition(fromStatus, toStatus) {
   if (fromStatus === toStatus) return
   const allowed = {
     DRAFT: ['PENDING_APPROVAL', 'PUBLISHED', 'ARCHIVED'],
-    PENDING_APPROVAL: ['APPROVED', 'PUBLISHED', 'CHANGES_REQUESTED', 'REJECTED', 'DRAFT'],
+    PENDING_APPROVAL: ['APPROVED', 'CHANGES_REQUESTED', 'REJECTED', 'DRAFT'],
     APPROVED: ['PUBLISHED', 'ARCHIVED'],
     PUBLISHED: ['ARCHIVED', 'EXPIRED'],
     CHANGES_REQUESTED: ['DRAFT', 'PENDING_APPROVAL', 'ARCHIVED'],
@@ -759,6 +776,9 @@ router.patch('/content/:id', async (req, res, next) => {
     }, existing.type)
     const mergedStartsAt = input.startsAt ?? existing.startsAt
     const mergedEndsAt = input.endsAt ?? existing.endsAt
+    if ((input.type ?? existing.type) === 'EVENT' && (!mergedStartsAt || !mergedEndsAt)) {
+      throw new AppError('Арга хэмжээний эхлэх болон дуусах огноо, цагийг оруулна уу.', 422, 'EVENT_SCHEDULE_REQUIRED')
+    }
     if (mergedStartsAt && mergedEndsAt && mergedEndsAt <= mergedStartsAt) {
       throw new AppError('Дуусах хугацаа эхлэх хугацаанаас хойш байна.', 422, 'CONTENT_DATE_INVALID')
     }
@@ -904,4 +924,4 @@ router.post('/action', requireIdempotency, async (req, res, next) => {
   } catch (error) { next(error) }
 })
 
-export { assertApplicationTransition, assertContentTransition, router as operationsRouter }
+export { assertApplicationTransition, assertContentTransition, contentInput, contentUpdateInput, router as operationsRouter }

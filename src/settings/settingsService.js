@@ -70,6 +70,10 @@ export const settingsService = {
     return unwrap(await request(`/settings/devices/${encodeURIComponent(deviceId)}`, { method: "DELETE", headers: { "x-step-up-token": stepUpToken } }));
   },
 
+  async logoutAllDevices(stepUpToken) {
+    return unwrap(await request("/settings/devices", { method: "DELETE", headers: { "x-step-up-token": stepUpToken } }));
+  },
+
   async deactivateAccount(stepUpToken) {
     return unwrap(await request("/settings/account/deactivate", { method: "POST", headers: { "x-step-up-token": stepUpToken } }));
   },

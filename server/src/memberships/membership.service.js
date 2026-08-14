@@ -225,7 +225,9 @@ export function createMembershipService(repository = membershipRepository, maile
           profile?.lastName,
           profile?.firstName,
           profile?.department,
-          role === 'STUDENT' ? profile?.studentId : profile?.employeeCode,
+          role === 'STUDENT'
+            ? /** @type {any} */ (profile)?.studentId
+            : /** @type {any} */ (profile)?.employeeCode,
           iso(item.lastLoginAt),
           iso(item.createdAt),
         ]

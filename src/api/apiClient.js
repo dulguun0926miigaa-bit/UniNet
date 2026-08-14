@@ -121,11 +121,14 @@ async function performApiRequest(path, options = {}) {
     signal,
     headers,
     idempotencyKey,
-    cacheTtlMs: _cacheTtlMs,
-    dedupe: _dedupe,
-    cacheKey: _cacheKey,
+    cacheTtlMs,
+    dedupe,
+    cacheKey,
     ...fetchOptions
   } = options;
+  void cacheTtlMs;
+  void dedupe;
+  void cacheKey;
   const method = String(fetchOptions.method || "GET").toUpperCase();
   const requestIdempotencyKey = idempotencyKey || (method === "POST" ? createIdempotencyKey() : null);
   const requestSignal = createRequestSignal(signal, timeoutMs);

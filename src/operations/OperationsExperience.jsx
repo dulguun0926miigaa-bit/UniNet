@@ -10,6 +10,7 @@ import HttpErrorState from "../errors/HttpErrorState.jsx";
 import { errorScreenStatus, mongolianErrorMessage } from "../errors/errorMessages.js";
 import StyledSelect from "../ui/StyledSelect.jsx";
 import { startQrCameraScanner } from "./qrCameraScanner.js";
+import { formatDate, formatDateTime, toIsoFromLocalDateTime, toLocalDateTimeInput } from "../settings/uiPreferences.js";
 
 const roleConfig = {
   STAFF: { base: "/staff", routes: staffRoutes, title: "Staff Dashboard", permission: "CREATE_CONTENT" },
@@ -73,7 +74,7 @@ function MetricBars({ labels = [], values = [] }) {
 
 function DashboardPage({ role, data, navigate, user }) {
   const isStaff = role === "STAFF", isAdmin = role === "UNIVERSITY_ADMIN";
-  const content = data.staffContent || [], users = data.users || [], registrations = data.registrations || [], applications = data.applications || [], partnerships = data.partnerships || [], universities = data.universities || [];
+  const content = data.staffContent || [], users = data.users || [], registrations = data.registrations || [], applications = data.applications || [], universities = data.universities || [];
   const analytics = data.analytics || {};
   const exact = (group, key) => Number(analytics[group]?.[key] || 0).toLocaleString();
   const exactTotal = group => Object.values(analytics[group] || {}).reduce((sum, value) => sum + Number(value || 0), 0).toLocaleString();
@@ -137,12 +138,22 @@ function ContentEditor({ content, onSaved, onDelete, onError }) {
   const [pricingType, setPricingType] = useState(content.pricingType || "FREE");
   const [priceAmount, setPriceAmount] = useState(content.priceAmount || "");
   const [currency, setCurrency] = useState(content.currency || "MNT");
+  const [startsAt, setStartsAt] = useState(toLocalDateTimeInput(content.startsAt));
+  const [endsAt, setEndsAt] = useState(toLocalDateTimeInput(content.endsAt));
   const [saving, setSaving] = useState(false);
   const editable = ["DRAFT", "CHANGES_REQUESTED", "REJECTED"].includes(content.status);
   const inputClass = "mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10";
 
   const save = async event => {
     event.preventDefault();
+    if (content.type === "EVENT" && (!startsAt || !endsAt)) {
+      onError("Арга хэмжээний эхлэх болон дуусах огноо, цагийг оруулна уу.");
+      return;
+    }
+    if (content.type === "EVENT" && new Date(endsAt) <= new Date(startsAt)) {
+      onError("Дуусах огноо, цаг нь эхлэх огноо, цагаас хойш байна.");
+      return;
+    }
     setSaving(true);
     try {
       const updated = await operationsService.updateContent(content.id, {
@@ -155,7 +166,13 @@ function ContentEditor({ content, onSaved, onDelete, onError }) {
         organization: organization.trim(),
         location: location.trim(),
         ...(capacity ? { capacity: Number(capacity) } : {}),
-        ...(content.type === "EVENT" ? { pricingType, priceAmount: pricingType === "PAID" ? Number(priceAmount) : 0, currency } : {}),
+        ...(content.type === "EVENT" ? {
+          startsAt: toIsoFromLocalDateTime(startsAt),
+          endsAt: toIsoFromLocalDateTime(endsAt),
+          pricingType,
+          priceAmount: pricingType === "PAID" ? Number(priceAmount) : 0,
+          currency,
+        } : {}),
       });
       await onSaved(updated);
     } catch (reason) { onError(reason.message); }
@@ -163,7 +180,31 @@ function ContentEditor({ content, onSaved, onDelete, onError }) {
   };
 
   if (!editable) return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-500">Энэ төлөвтэй контент read-only байна. Засахын өмнө зөвшөөрөгдсөн lifecycle төлөвт шилжүүлнэ.</div>;
-  return <form onSubmit={save} className="space-y-4"><div className="grid gap-4 md:grid-cols-2"><label className="text-xs font-bold">Гарчиг *<input required minLength="3" value={title} onChange={event => setTitle(event.target.value)} className={inputClass} /></label><label className="text-xs font-bold">Visibility<select value={visibility} onChange={event => setVisibility(event.target.value)} className={inputClass}>{["PRIVATE", "PARTNERS", "NETWORK", "PUBLIC"].map(value => <option key={value}>{value}</option>)}</select></label><label className="text-xs font-bold md:col-span-2">Товч тайлбар *<input required minLength="3" value={shortDescription} onChange={event => setShortDescription(event.target.value)} className={inputClass} /></label><label className="text-xs font-bold md:col-span-2">Дэлгэрэнгүй *<textarea required minLength="3" rows="5" value={description} onChange={event => setDescription(event.target.value)} className={inputClass} /></label><label className="text-xs font-bold">Ангилал<input value={category} onChange={event => setCategory(event.target.value)} className={inputClass} /></label><label className="text-xs font-bold">Байгууллага<input value={organization} onChange={event => setOrganization(event.target.value)} className={inputClass} /></label><label className="text-xs font-bold">Байршил<input value={location} onChange={event => setLocation(event.target.value)} className={inputClass} /></label>{content.type === "EVENT" && <><label className="text-xs font-bold">Багтаамж<input type="number" min="1" value={capacity} onChange={event => setCapacity(event.target.value)} className={inputClass} /></label><label className="text-xs font-bold">Тасалбарын төрөл<select value={pricingType} onChange={event => setPricingType(event.target.value)} className={inputClass}><option value="FREE">FREE · Үнэгүй</option><option value="PAID">PAID · Төлбөртэй</option></select></label>{pricingType === "PAID" && <><label className="text-xs font-bold">Тасалбарын үнэ<input type="number" min="1" step="1" required value={priceAmount} onChange={event => setPriceAmount(event.target.value)} className={inputClass} /></label><label className="text-xs font-bold">Валют<select value={currency} onChange={event => setCurrency(event.target.value)} className={inputClass}><option value="MNT">MNT · ₮</option></select></label></>}</>}</div><div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={onDelete} className="mr-auto rounded-lg border border-rose-200 px-4 py-2 text-xs font-bold text-rose-600">Устгах</button><button disabled={saving} className="rounded-lg bg-blue-600 px-5 py-2 text-xs font-bold text-white disabled:opacity-50">{saving ? "Хадгалж байна..." : "Өөрчлөлт хадгалах"}</button></div></form>;
+  return <form onSubmit={save} className="space-y-4">
+    <div className="grid gap-4 md:grid-cols-2">
+      <label className="text-xs font-bold">Гарчиг *<input required minLength="3" value={title} onChange={event => setTitle(event.target.value)} className={inputClass} /></label>
+      <label className="text-xs font-bold">Visibility<select value={visibility} onChange={event => setVisibility(event.target.value)} className={inputClass}>{["PRIVATE", "PARTNERS", "NETWORK", "PUBLIC"].map(value => <option key={value}>{value}</option>)}</select></label>
+      <label className="text-xs font-bold md:col-span-2">Товч тайлбар *<input required minLength="3" value={shortDescription} onChange={event => setShortDescription(event.target.value)} className={inputClass} /></label>
+      <label className="text-xs font-bold md:col-span-2">Дэлгэрэнгүй *<textarea required minLength="3" rows="5" value={description} onChange={event => setDescription(event.target.value)} className={inputClass} /></label>
+      <label className="text-xs font-bold">Ангилал<input value={category} onChange={event => setCategory(event.target.value)} className={inputClass} /></label>
+      <label className="text-xs font-bold">Байгууллага<input value={organization} onChange={event => setOrganization(event.target.value)} className={inputClass} /></label>
+      <label className="text-xs font-bold">Байршил<input value={location} onChange={event => setLocation(event.target.value)} className={inputClass} /></label>
+      {content.type === "EVENT" && <>
+        <label className="text-xs font-bold">Эхлэх огноо, цаг *<input type="datetime-local" required value={startsAt} onChange={event => setStartsAt(event.target.value)} className={inputClass} /></label>
+        <label className="text-xs font-bold">Дуусах огноо, цаг *<input type="datetime-local" required min={startsAt || undefined} value={endsAt} onChange={event => setEndsAt(event.target.value)} className={inputClass} /></label>
+        <label className="text-xs font-bold">Багтаамж<input type="number" min="1" value={capacity} onChange={event => setCapacity(event.target.value)} className={inputClass} /></label>
+        <label className="text-xs font-bold">Тасалбарын төрөл<select value={pricingType} onChange={event => setPricingType(event.target.value)} className={inputClass}><option value="FREE">FREE · Үнэгүй</option><option value="PAID">PAID · Төлбөртэй</option></select></label>
+        {pricingType === "PAID" && <>
+          <label className="text-xs font-bold">Тасалбарын үнэ<input type="number" min="1" step="1" required value={priceAmount} onChange={event => setPriceAmount(event.target.value)} className={inputClass} /></label>
+          <label className="text-xs font-bold">Валют<select value={currency} onChange={event => setCurrency(event.target.value)} className={inputClass}><option value="MNT">MNT · ₮</option></select></label>
+        </>}
+      </>}
+    </div>
+    <div className="flex flex-wrap justify-end gap-2">
+      <button type="button" onClick={onDelete} className="mr-auto rounded-lg border border-rose-200 px-4 py-2 text-xs font-bold text-rose-600">Устгах</button>
+      <button disabled={saving} className="rounded-lg bg-blue-600 px-5 py-2 text-xs font-bold text-white disabled:opacity-50">{saving ? "Хадгалж байна..." : "Өөрчлөлт хадгалах"}</button>
+    </div>
+  </form>;
 }
 
 function EventQrApprovalScanner({ event, onToast }) {
@@ -245,7 +286,7 @@ function EventQrApprovalScanner({ event, onToast }) {
     {scanning && <div role="status" className="rounded-xl border border-blue-700 bg-blue-950 p-4 text-center text-xs font-bold text-blue-100">QR-г серверээр шалгаж байна...</div>}
     {cameraError && !scanning && <div role="alert" className="rounded-xl border border-rose-700 bg-rose-950 p-4 text-xs text-rose-100">{cameraError}</div>}
     {result && !scanning && <div aria-live="polite" className={`rounded-xl border p-4 text-xs ${result.alreadyRecorded ? "border-amber-600 bg-amber-950 text-amber-100" : "border-emerald-600 bg-emerald-950 text-emerald-100"}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2"><b className="text-sm">{result.alreadyRecorded ? "ALREADY APPROVED" : "APPROVED"}</b><span>{result.attendedAt ? new Intl.DateTimeFormat("mn-MN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(result.attendedAt)) : ""}</span></div>
+      <div className="flex flex-wrap items-center justify-between gap-2"><b className="text-sm">{result.alreadyRecorded ? "ALREADY APPROVED" : "APPROVED"}</b><span>{result.attendedAt ? formatDateTime(result.attendedAt) : ""}</span></div>
       <p className="mt-2">{result.student} · {result.university} · {result.event}</p>
     </div>}
   </div>;
@@ -262,7 +303,11 @@ function ContentDescriptionPanel({ content, user, canManageRegistrations, onToas
 
   return <section className="rounded-xl border border-slate-200 bg-white p-5">
     <div className="flex flex-wrap items-start justify-between gap-4">
-      <div className="min-w-0 flex-1"><h3 className="font-display text-sm font-bold text-slate-900">{content.type === "EVENT" ? "Event-ийн дэлгэрэнгүй тайлбар" : "Дэлгэрэнгүй тайлбар"}</h3><p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{content.description || content.shortDescription || "Тайлбар оруулаагүй байна."}</p></div>
+      <div className="min-w-0 flex-1">
+        <h3 className="font-display text-sm font-bold text-slate-900">{content.type === "EVENT" ? "Event-ийн дэлгэрэнгүй тайлбар" : "Дэлгэрэнгүй тайлбар"}</h3>
+        {content.type === "EVENT" && content.startsAt && content.endsAt && <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">{formatDateTime(content.startsAt)} — {formatDateTime(content.endsAt)}</p>}
+        <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{content.description || content.shortDescription || "Тайлбар оруулаагүй байна."}</p>
+      </div>
       {canScanOwnEvent && <button type="button" onClick={() => setScannerOpen(value => !value)} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-xs font-bold text-white shadow-sm hover:bg-blue-700"><Camera className="h-4 w-4" />{scannerOpen ? "Scanner хаах" : "QR шалгах"}</button>}
     </div>
     {canScanOwnEvent && <p className="mt-4 rounded-lg bg-blue-50 p-3 text-[11px] leading-relaxed text-blue-800">QR шалгахыг нээхэд camera permission хүснэ. Зөвхөн UniNet серверийн гарын үсэгтэй, энэ event-д хамаарах, төлбөр нь баталгаажсан ticket APPROVED болно.</p>}
@@ -309,7 +354,8 @@ function CreateContent({ onToast, user, partnerships = [], onSaved }) {
       if (type !== "SURVEY" && shortDescription.trim().length < 3) return "Товч тайлбарыг оруулна уу.";
       if (type !== "SURVEY" && description.trim().length < 3) return "Дэлгэрэнгүй тайлбарыг оруулна уу.";
     }
-    if (currentStep === 3 && type === "EVENT" && (!startsAt || !endsAt)) return "Арга хэмжээний эхлэх болон дуусах огноог оруулна уу.";
+    if (currentStep === 3 && type === "EVENT" && (!startsAt || !endsAt)) return "Арга хэмжээний эхлэх болон дуусах огноо, цагийг оруулна уу.";
+    if (currentStep === 3 && type === "EVENT" && new Date(endsAt) <= new Date(startsAt)) return "Дуусах огноо, цаг нь эхлэх огноо, цагаас хойш байна.";
     if (currentStep === 3 && type === "EVENT" && pricingType === "PAID" && (!Number.isInteger(Number(priceAmount)) || Number(priceAmount) <= 0)) return "Төлбөртэй event-ийн тасалбарын үнийг 0-ээс их бүхэл тоогоор оруулна уу.";
     if (currentStep === 3 && type === "SURVEY" && parsedQuestions.length === 0) return "Хамгийн багадаа нэг асуулт оруулна уу.";
     return "";
@@ -331,8 +377,8 @@ function CreateContent({ onToast, user, partnerships = [], onSaved }) {
       ...(["INTERNSHIP", "JOB"].includes(type) && organization.trim() ? { organization: organization.trim() } : {}),
       ...(type === "EVENT" && location.trim() ? { location: location.trim() } : {}),
       ...(["INTERNSHIP", "JOB"].includes(type) ? { mode } : {}),
-      ...(type === "EVENT" && startsAt ? { startsAt } : {}),
-      ...(type === "EVENT" && endsAt ? { endsAt } : {}),
+      ...(type === "EVENT" && startsAt ? { startsAt: toIsoFromLocalDateTime(startsAt) } : {}),
+      ...(type === "EVENT" && endsAt ? { endsAt: toIsoFromLocalDateTime(endsAt) } : {}),
       ...(["INTERNSHIP", "JOB", "RESEARCH", "ANNOUNCEMENT"].includes(type) && deadlineAt ? { deadlineAt } : {}),
       ...(type === "EVENT" && capacity ? { capacity: Number(capacity) } : {}),
       ...(type === "EVENT" ? { pricingType, priceAmount: pricingType === "PAID" ? Number(priceAmount) : 0, currency } : {}),
@@ -374,9 +420,49 @@ function CreateContent({ onToast, user, partnerships = [], onSaved }) {
         {error && <div className="mb-5 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-700">{error}</div>}
         {step === 1 && <div><h2 className="font-display mb-5 text-xl font-bold">Контентын төрөл</h2><div className="grid grid-cols-2 gap-3 md:grid-cols-3">{types.map(item => <button key={item} type="button" onClick={() => setType(item)} className={`rounded-xl border p-5 text-sm font-bold ${type === item ? "border-blue-500 bg-blue-50 text-blue-700" : "border-slate-200"}`}>{item}</button>)}</div></div>}
         {step === 2 && <div className="grid gap-4 md:grid-cols-2"><label className="md:col-span-2 text-xs font-bold">Гарчиг *<input value={title} onChange={event => setTitle(event.target.value)} className={fieldClass} /></label>{type !== "SURVEY" && <label className="md:col-span-2 text-xs font-bold">Товч тайлбар *<textarea value={shortDescription} onChange={event => setShortDescription(event.target.value)} maxLength="500" rows="3" className={fieldClass} /></label>}<label className="md:col-span-2 text-xs font-bold">{type === "SURVEY" ? "Судалгааны тайлбар" : "Дэлгэрэнгүй тайлбар"} *<textarea value={description} onChange={event => setDescription(event.target.value)} rows="6" className={fieldClass} /></label>{type !== "SURVEY" && <><label className="text-xs font-bold">Category<input value={category} onChange={event => setCategory(event.target.value)} className={fieldClass} /></label><label className="text-xs font-bold">Tags<input value={tags} onChange={event => setTags(event.target.value)} placeholder="AI, технологи" className={fieldClass} /></label></>}</div>}
-        {step === 3 && <div><h2 className="font-display mb-5 text-xl font-bold">{type} мэдээлэл</h2><div className="grid gap-4 md:grid-cols-2">{type === "EVENT" && <><label className="text-xs font-bold">Эхлэх огноо *<input type="date" value={startsAt} onChange={event => setStartsAt(event.target.value)} required className={fieldClass} /></label><label className="text-xs font-bold">Дуусах огноо *<input type="date" value={endsAt} onChange={event => setEndsAt(event.target.value)} required className={fieldClass} /></label><label className="text-xs font-bold">Байршил<input value={location} onChange={event => setLocation(event.target.value)} className={fieldClass} /></label><label className="text-xs font-bold">Багтаамж<input type="number" value={capacity} onChange={event => setCapacity(event.target.value)} min="1" className={fieldClass} /></label><label className="text-xs font-bold">Тасалбарын төрөл<select value={pricingType} onChange={event => setPricingType(event.target.value)} className={fieldClass}><option value="FREE">FREE · Үнэгүй</option><option value="PAID">PAID · Төлбөртэй</option></select></label>{pricingType === "PAID" && <><label className="text-xs font-bold">Тасалбарын үнэ *<input type="number" min="1" step="1" value={priceAmount} onChange={event => setPriceAmount(event.target.value)} placeholder="25000" className={fieldClass} /></label><label className="text-xs font-bold">Валют<select value={currency} onChange={event => setCurrency(event.target.value)} className={fieldClass}><option value="MNT">MNT · ₮</option></select></label></>}</>}{["INTERNSHIP", "JOB"].includes(type) && <><label className="text-xs font-bold">Байгууллага<input value={organization} onChange={event => setOrganization(event.target.value)} className={fieldClass} /></label><label className="text-xs font-bold">Deadline<input type="date" value={deadlineAt} onChange={event => setDeadlineAt(event.target.value)} className={fieldClass} /></label><label className="text-xs font-bold">Work mode<select value={mode} onChange={event => setMode(event.target.value)} className={fieldClass}><option>On-site</option><option>Hybrid</option><option>Remote</option></select></label><label className="text-xs font-bold">Цалин / нөхөн олговор<input value={compensation} onChange={event => setCompensation(event.target.value)} className={fieldClass} /></label><label className="md:col-span-2 text-xs font-bold">Requirements<textarea value={requirements} onChange={event => setRequirements(event.target.value)} rows="5" className={fieldClass} /></label></>}{type === "SURVEY" && <label className="md:col-span-2 text-xs font-bold">Асуултууд — мөр бүрт нэг асуулт *<textarea value={surveyQuestions} onChange={event => setSurveyQuestions(event.target.value)} rows="9" placeholder="Эхний асуултаа энд оруулна уу" className={fieldClass} /><span className="mt-2 block text-[10px] font-medium text-slate-400">{parsedQuestions.length} асуулт</span></label>}{!["EVENT", "INTERNSHIP", "JOB", "SURVEY"].includes(type) && <><label className="text-xs font-bold">Field / Category<input value={category} onChange={event => setCategory(event.target.value)} className={fieldClass} /></label><label className="text-xs font-bold">Deadline<input type="date" value={deadlineAt} onChange={event => setDeadlineAt(event.target.value)} className={fieldClass} /></label><label className="md:col-span-2 text-xs font-bold">Requirements / Attachments<textarea value={requirements} onChange={event => setRequirements(event.target.value)} rows="6" className={fieldClass} /></label></>}</div></div>}
+        {step === 3 && <div>
+          <h2 className="font-display mb-5 text-xl font-bold">{type} мэдээлэл</h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            {type === "EVENT" && <>
+              <label className="text-xs font-bold">Эхлэх огноо, цаг *<input type="datetime-local" value={startsAt} onChange={event => setStartsAt(event.target.value)} required className={fieldClass} /></label>
+              <label className="text-xs font-bold">Дуусах огноо, цаг *<input type="datetime-local" min={startsAt || undefined} value={endsAt} onChange={event => setEndsAt(event.target.value)} required className={fieldClass} /></label>
+              <label className="text-xs font-bold">Байршил<input value={location} onChange={event => setLocation(event.target.value)} className={fieldClass} /></label>
+              <label className="text-xs font-bold">Багтаамж<input type="number" value={capacity} onChange={event => setCapacity(event.target.value)} min="1" className={fieldClass} /></label>
+              <label className="text-xs font-bold">Тасалбарын төрөл<select value={pricingType} onChange={event => setPricingType(event.target.value)} className={fieldClass}><option value="FREE">FREE · Үнэгүй</option><option value="PAID">PAID · Төлбөртэй</option></select></label>
+              {pricingType === "PAID" && <>
+                <label className="text-xs font-bold">Тасалбарын үнэ *<input type="number" min="1" step="1" value={priceAmount} onChange={event => setPriceAmount(event.target.value)} placeholder="25000" className={fieldClass} /></label>
+                <label className="text-xs font-bold">Валют<select value={currency} onChange={event => setCurrency(event.target.value)} className={fieldClass}><option value="MNT">MNT · ₮</option></select></label>
+              </>}
+            </>}
+            {["INTERNSHIP", "JOB"].includes(type) && <>
+              <label className="text-xs font-bold">Байгууллага<input value={organization} onChange={event => setOrganization(event.target.value)} className={fieldClass} /></label>
+              <label className="text-xs font-bold">Deadline<input type="date" value={deadlineAt} onChange={event => setDeadlineAt(event.target.value)} className={fieldClass} /></label>
+              <label className="text-xs font-bold">Work mode<select value={mode} onChange={event => setMode(event.target.value)} className={fieldClass}><option>On-site</option><option>Hybrid</option><option>Remote</option></select></label>
+              <label className="text-xs font-bold">Цалин / нөхөн олговор<input value={compensation} onChange={event => setCompensation(event.target.value)} className={fieldClass} /></label>
+              <label className="md:col-span-2 text-xs font-bold">Requirements<textarea value={requirements} onChange={event => setRequirements(event.target.value)} rows="5" className={fieldClass} /></label>
+            </>}
+            {type === "SURVEY" && <label className="md:col-span-2 text-xs font-bold">Асуултууд — мөр бүрт нэг асуулт *<textarea value={surveyQuestions} onChange={event => setSurveyQuestions(event.target.value)} rows="9" placeholder="Эхний асуултаа энд оруулна уу" className={fieldClass} /><span className="mt-2 block text-[10px] font-medium text-slate-400">{parsedQuestions.length} асуулт</span></label>}
+            {!["EVENT", "INTERNSHIP", "JOB", "SURVEY"].includes(type) && <>
+              <label className="text-xs font-bold">Field / Category<input value={category} onChange={event => setCategory(event.target.value)} className={fieldClass} /></label>
+              <label className="text-xs font-bold">Deadline<input type="date" value={deadlineAt} onChange={event => setDeadlineAt(event.target.value)} className={fieldClass} /></label>
+              <label className="md:col-span-2 text-xs font-bold">Requirements / Attachments<textarea value={requirements} onChange={event => setRequirements(event.target.value)} rows="6" className={fieldClass} /></label>
+            </>}
+          </div>
+        </div>}
         {step === 4 && <div><h2 className="font-display mb-5 text-xl font-bold">Audience ба visibility</h2>{type === "SURVEY" ? <p className="rounded-xl border border-blue-100 bg-blue-50 p-5 text-sm text-blue-800">Судалгаа {universityName}-ийн оюутнуудад хүрнэ.</p> : <><div className="grid grid-cols-2 gap-3 md:grid-cols-4">{["PRIVATE", "PARTNERS", "NETWORK", "PUBLIC"].map(item => <button key={item} type="button" onClick={() => setVisibility(item)} className={`rounded-xl border p-5 text-sm font-bold ${visibility === item ? "border-blue-500 bg-blue-50 text-blue-700" : "border-slate-200"}`}>{item}</button>)}</div>{visibility === "PARTNERS" && <div className="mt-5 rounded-xl bg-amber-50 p-5"><p className="text-xs font-bold text-amber-800">Идэвхтэй хамтрагч сургуулиуд</p>{activePartners.length ? <div className="mt-3 flex flex-wrap gap-3">{activePartners.map(item => <label key={item.id} className="text-sm"><input type="checkbox" checked={selectedPartners.includes(item.id)} onChange={event => setSelectedPartners(current => event.target.checked ? [...current, item.id] : current.filter(id => id !== item.id))} className="mr-2" />{item.university}</label>)}</div> : <p className="mt-3 text-xs text-amber-700">Идэвхтэй түншлэл одоогоор алга.</p>}</div>}<p className="mt-5 rounded-xl bg-blue-50 p-4 text-xs text-blue-800">{visibility === "PRIVATE" ? `Зөвхөн ${universityName}-ийн хэрэглэгчид харна.` : `${visibility} хүрээнд батлагдсаны дараа харагдана.`}</p></>}</div>}
-        {step === 5 && <div><h2 className="font-display mb-5 text-xl font-bold">Preview ба илгээх</h2><div className="rounded-2xl border border-slate-200 p-6"><div className="flex justify-between"><span className="text-xs font-bold text-blue-600">{type}</span><VisibilityBadge value={type === "SURVEY" ? "PRIVATE" : visibility} /></div><h3 className="font-display mt-4 text-xl font-bold">{title || "Гарчиг оруулаагүй"}</h3><p className="mt-2 whitespace-pre-wrap text-sm text-slate-500">{type === "SURVEY" ? description : shortDescription}</p>{type === "EVENT" && <div className="mt-4 inline-flex rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-700">{pricingType === "PAID" ? `PAID · ${Number(priceAmount || 0).toLocaleString()} ₮` : "FREE · Үнэгүй"}</div>}</div><div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">{type === "SURVEY" ? "Судалгаа нийтлэгдсэний дараа оюутнууд бөглөх боломжтой болно." : user.permissions?.includes("PUBLISH_CONTENT") ? "Та шууд нийтлэх эрхтэй." : "Танд canPublish эрх байхгүй тул University Admin-д батлуулахаар илгээгдэнэ."}</div></div>}
+        {step === 5 && <div>
+          <h2 className="font-display mb-5 text-xl font-bold">Preview ба илгээх</h2>
+          <div className="rounded-2xl border border-slate-200 p-6">
+            <div className="flex justify-between"><span className="text-xs font-bold text-blue-600">{type}</span><VisibilityBadge value={type === "SURVEY" ? "PRIVATE" : visibility} /></div>
+            <h3 className="font-display mt-4 text-xl font-bold">{title || "Гарчиг оруулаагүй"}</h3>
+            <p className="mt-2 whitespace-pre-wrap text-sm text-slate-500">{type === "SURVEY" ? description : shortDescription}</p>
+            {type === "EVENT" && <>
+              <p className="mt-4 text-xs font-bold text-slate-700">{formatDateTime(startsAt)} — {formatDateTime(endsAt)}</p>
+              <div className="mt-3 inline-flex rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-700">{pricingType === "PAID" ? `PAID · ${Number(priceAmount || 0).toLocaleString()} ₮` : "FREE · Үнэгүй"}</div>
+            </>}
+          </div>
+          <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">{type === "SURVEY" ? "Судалгаа нийтлэгдсэний дараа оюутнууд бөглөх боломжтой болно." : user.permissions?.includes("PUBLISH_CONTENT") ? "Та шууд нийтлэх эрхтэй." : "Танд canPublish эрх байхгүй тул University Admin-д батлуулахаар илгээгдэнэ."}</div>
+        </div>}
         <div className="mt-8 flex justify-between border-t border-slate-100 pt-5"><button type="button" disabled={step === 1 || saving} onClick={() => setStep(value => value - 1)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold disabled:opacity-40">Өмнөх</button><div className="flex gap-2"><button type="button" disabled={saving} onClick={() => saveContent("DRAFT")} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold disabled:opacity-50">Ноорог хадгалах</button>{step < 5 ? <button type="button" disabled={saving} onClick={next} className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">Дараах</button> : <button type="button" disabled={saving} onClick={() => saveContent(type === "EVENT" && user.role === "STAFF" ? "PENDING_APPROVAL" : user.permissions?.includes("PUBLISH_CONTENT") ? "PUBLISHED" : "PENDING_APPROVAL")} className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{saving ? "Хадгалж байна..." : type === "SURVEY" ? "Судалгаа нийтлэх" : "Батлуулахаар илгээх"}</button>}</div></div>
       </div>
     </>
@@ -436,7 +522,7 @@ function StaffFormsBuilder({ onToast }) {
     finally { setLoadingSurveys(false); }
   }, [surveyPage, surveyPageSize, surveySearch, surveyStatus, surveyVisibility]);
 
-  useEffect(() => { loadManagedSurveys(); }, [loadManagedSurveys]);
+  useEffect(() => { const timer = window.setTimeout(loadManagedSurveys, 0); return () => window.clearTimeout(timer); }, [loadManagedSurveys]);
 
   const resetEditor = () => {
     setTitle(""); setDescription(""); setVisibility("PRIVATE"); setQuestions([newFormQuestion()]); setPreview(false); setEditingId(null); setError("");
@@ -708,7 +794,7 @@ function ReportsPage({ global = false, onToast, data }) {
     <>
       <PageHeader title={global ? "Global Analytics" : "Тайлан ба аналитик"} description="Эдгээр үзүүлэлт mock биш. PostgreSQL count/groupBy query-гээс хүсэлт бүрт бодитоор тооцогдоно."
         actions={<button type="button" onClick={() => { if (exportRowsCsv(aggregateRows, "uninet-live-analytics.csv")) onToast("Live aggregate CSV татлаа."); }} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold">CSV export</button>} />
-      <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-800"><b>Source: {analytics.source || "POSTGRESQL"}</b> · Тооцоолсон: {analytics.generatedAt ? new Intl.DateTimeFormat("mn-MN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(analytics.generatedAt)) : "—"}</div>
+      <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-800"><b>Source: {analytics.source || "POSTGRESQL"}</b> · Тооцоолсон: {analytics.generatedAt ? formatDateTime(analytics.generatedAt) : "—"}</div>
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4"><StatCard value={userTotal.toLocaleString()} label="Нийт хэрэглэгч" /><StatCard value={contentTotal.toLocaleString()} label="Нийт контент" /><StatCard value={registrationTotal.toLocaleString()} label="Нийт бүртгэл" /><StatCard value={applicationTotal.toLocaleString()} label="Нийт өргөдөл" /></div>
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-2xl border border-slate-200 bg-white p-6"><h2 className="font-display mb-5 font-bold">Контентын visibility</h2>{bars.length ? bars.map(([label,count]) => <div key={label} className="mb-4"><div className="mb-1 flex justify-between text-xs"><span>{label}</span><b>{count}</b></div><div className="h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-blue-600" style={{ width: `${Number(count)/max*100}%` }} /></div></div>) : <EmptyState title="Контентын aggregate алга." />}</section>
@@ -810,7 +896,7 @@ function UniversityDomainConsole({ universityId, onClose, onToast, onChanged }) 
     }
     catch (reason) { setError(reason); }
   }, [universityId]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { const timer = window.setTimeout(load, 0); return () => window.clearTimeout(timer); }, [load]);
 
   const run = async (key, work, message) => {
     setBusy(key); setError(null);
@@ -960,13 +1046,18 @@ function UniversityProfilePage({ onToast }) {
     }
   }, []);
 
-  useEffect(() => { loadProfile(); }, [loadProfile]);
   useEffect(() => {
-    if (!logoFile) { setLogoPreview(""); return undefined; }
-    const preview = URL.createObjectURL(logoFile);
-    setLogoPreview(preview);
-    return () => URL.revokeObjectURL(preview);
-  }, [logoFile]);
+    const timer = window.setTimeout(loadProfile, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadProfile]);
+  useEffect(() => () => {
+    if (logoPreview) URL.revokeObjectURL(logoPreview);
+  }, [logoPreview]);
+
+  const selectLogoFile = file => {
+    setLogoFile(file);
+    setLogoPreview(file ? URL.createObjectURL(file) : "");
+  };
 
   if (loading) return <LoadingSkeleton variant="profile" />;
   if (!profile) return <ErrorState message={error || "Сургуулийн профайлыг ачаалж чадсангүй."} onRetry={loadProfile} />;
@@ -984,6 +1075,7 @@ function UniversityProfilePage({ onToast }) {
       if (String(body.logoUrl || "").startsWith("/api/public/")) delete body.logoUrl;
       const result = await operationsService.updateOwnUniversityProfile(body);
       setProfile(result.university);
+      window.dispatchEvent(new CustomEvent("uninet:university-profile-updated", { detail: result.university }));
       onToast("Сургуулийн профайлыг database-д хадгаллаа.");
     } catch (reason) {
       setError(reason.message || "Профайлыг хадгалж чадсангүй.");
@@ -998,8 +1090,10 @@ function UniversityProfilePage({ onToast }) {
     setError("");
     try {
       const result = await operationsService.uploadUniversityLogo(logoFile);
-      setProfile(current => ({ ...current, logoUrl: result.logoUrl }));
-      setLogoFile(null);
+      const updatedProfile = { ...profile, logoUrl: result.logoUrl };
+      setProfile(updatedProfile);
+      window.dispatchEvent(new CustomEvent("uninet:university-profile-updated", { detail: updatedProfile }));
+      selectLogoFile(null);
       onToast("Сургуулийн лого амжилттай upload хийгдлээ.");
     } catch (reason) {
       setError(reason.message || "Лого upload хийж чадсангүй.");
@@ -1024,7 +1118,7 @@ function UniversityProfilePage({ onToast }) {
         <div className="my-4 flex items-center gap-3 text-[10px] font-bold uppercase tracking-wider text-slate-300"><span className="h-px flex-1 bg-slate-200" />эсвэл upload<span className="h-px flex-1 bg-slate-200" /></div>
         <label className="block rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-xs font-bold text-slate-600 transition hover:border-blue-300 hover:bg-blue-50">
           JPG, PNG эсвэл WebP сонгох
-          <input type="file" accept="image/jpeg,image/png,image/webp" onChange={event => setLogoFile(event.target.files?.[0] || null)} className="sr-only" />
+          <input type="file" accept="image/jpeg,image/png,image/webp" onChange={event => selectLogoFile(event.target.files?.[0] || null)} className="sr-only" />
         </label>
         {logoFile && <div className="mt-3 rounded-xl bg-slate-50 p-3"><p className="truncate text-[10px] text-slate-500">{logoFile.name}</p><button type="button" disabled={logoUploading} onClick={uploadLogo} className="mt-2 w-full rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{logoUploading ? "Upload хийж байна..." : "Сонгосон логог upload хийх"}</button></div>}
         <div className="mt-4 grid grid-cols-2 gap-3">
@@ -1041,6 +1135,57 @@ function UniversityProfilePage({ onToast }) {
         <button disabled={saving || logoUploading} className="mt-6 rounded-xl bg-slate-900 px-6 py-3 text-xs font-bold text-white disabled:opacity-50">{saving ? "Хадгалж байна..." : "Профайл хадгалах"}</button>
       </section>
     </form>
+  </>;
+}
+
+function FeedbackAdminPage({ onToast }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("ALL");
+  const [updatingId, setUpdatingId] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const result = await operationsService.listFeedback({ search, status, pageSize: 50 });
+      setItems(result.feedback || []);
+    } catch (reason) {
+      setError(reason.message || "Санал хүсэлтийн жагсаалтыг ачаалж чадсангүй.");
+    } finally {
+      setLoading(false);
+    }
+  }, [search, status]);
+
+  useEffect(() => { const timer = window.setTimeout(load, 250); return () => window.clearTimeout(timer); }, [load]);
+
+  const updateStatus = async (item, nextStatus) => {
+    setUpdatingId(item.id);
+    try {
+      const result = await operationsService.updateFeedbackStatus(item.id, nextStatus);
+      setItems(current => current.map(value => value.id === item.id ? result.feedback : value));
+      onToast(`Санал хүсэлтийг ${nextStatus} төлөвт шилжүүллээ.`);
+    } catch (reason) {
+      onToast(reason.message || "Санал хүсэлтийн төлөвийг шинэчилж чадсангүй.");
+    } finally {
+      setUpdatingId("");
+    }
+  };
+
+  return <>
+    <PageHeader title="Санал хүсэлт" description="Хэрэглэгчдийн Settings → Send feedback хэсгээс ирсэн санал, алдаа болон шинэ боломжийн хүсэлтийг бодитоор удирдана." />
+    <FilterBar search={search} onSearch={setSearch}>
+      <SelectFilter label="Төлөв" value={status} onChange={setStatus} options={["OPEN", "IN_REVIEW", "RESOLVED", "CLOSED"]} />
+    </FilterBar>
+    {loading ? <LoadingSkeleton variant="table" /> : error ? <ErrorState message={error} onRetry={load} /> : !items.length ? <EmptyState title="Энэ шүүлтүүрт санал хүсэлт алга байна." /> : <div className="space-y-4">
+      {items.map(item => <article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-5 md:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><Badge value={item.status} /><span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold text-blue-700">{item.category}</span></div><h2 className="font-display mt-3 text-lg font-bold">{item.subject}</h2></div><time className="text-xs text-slate-400">{formatDateTime(item.createdAt)}</time></div>
+        <p className="mt-4 whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-sm leading-relaxed text-slate-600">{item.message}</p>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4"><div className="text-xs text-slate-500"><b className="text-slate-800">{item.sender.name}</b> · {item.sender.email} · {item.sender.university} · {item.sender.role}</div><div className="flex flex-wrap gap-2">{["OPEN", "IN_REVIEW", "RESOLVED", "CLOSED"].filter(value => value !== item.status).map(value => <button key={value} type="button" disabled={updatingId === item.id} onClick={() => updateStatus(item, value)} className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-bold text-slate-700 disabled:opacity-40">{value}</button>)}</div></div>
+      </article>)}
+    </div>}
   </>;
 }
 
@@ -1145,7 +1290,7 @@ function AttendanceScanner({ data, user, onToast, onScanned }) {
       <label className="text-xs font-bold text-slate-700">QR token<input value={ticket} onChange={event => setTicket(event.target.value)} autoComplete="off" spellCheck="false" placeholder="Scanner-аар уншуулна уу" className="mt-2 block w-full rounded-xl border border-slate-200 bg-white px-3 py-3 font-mono text-xs focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100" /></label>
       <button type="submit" disabled={scanning || !ticket.trim()} className="self-end rounded-xl bg-slate-900 px-5 py-3 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{scanning ? "Шалгаж байна..." : "Ирц бүртгэх"}</button>
     </form> : <p className="mt-5 rounded-xl border border-dashed border-slate-200 bg-white p-4 text-xs text-slate-500">Ирц scan хийх нийтлэгдсэн төлбөртэй арга хэмжээ одоогоор алга.</p>}
-    {result && <div aria-live="polite" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-800"><b>{result.student}</b> · {result.university} · {result.event}<span className="ml-2">{result.attendedAt ? new Intl.DateTimeFormat("mn-MN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(result.attendedAt)) : ""}</span></div>}
+    {result && <div aria-live="polite" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-800"><b>{result.student}</b> · {result.university} · {result.event}<span className="ml-2">{result.attendedAt ? formatDateTime(result.attendedAt) : ""}</span></div>}
   </section>;
 }
 
@@ -1194,7 +1339,7 @@ function RegistrationManagementPage({ data, user, onToast }) {
     university: item.student.university,
     major: item.student.major || "—",
     eventTitle: item.event.title,
-    created: new Intl.DateTimeFormat("mn-MN", { dateStyle: "medium" }).format(new Date(item.createdAt)),
+    created: formatDate(item.createdAt),
   }));
   return <>
     <PageHeader title="Бүртгэлийн удирдлага" description="Backend tenant, Staff ownership, waitlist болон attendance дүрмээр шүүсэн бодит бүртгэлүүд." />
@@ -1272,7 +1417,7 @@ function ApplicationManagementPage({ onToast }) {
     major: item.student.major || "—",
     opportunityTitle: item.opportunity.title,
     type: item.opportunity.type,
-    date: new Intl.DateTimeFormat("mn-MN", { dateStyle: "medium" }).format(new Date(item.submittedAt)),
+    date: formatDate(item.submittedAt),
   }));
   return <>
     <PageHeader title="Өргөдлийн удирдлага" description="Өргөдөл, CV, immutable status history, notification болон tenant/ownership хамгаалалт." />
@@ -1295,20 +1440,21 @@ function ApplicationManagementPage({ onToast }) {
     {detail && <Modal title={`${detail.student.name} · ${detail.opportunity.title}`} onClose={() => setDetail(null)} wide>
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="rounded-xl bg-slate-50 p-5 text-xs"><h3 className="font-display text-sm font-bold">Оюутны мэдээлэл</h3><dl className="mt-4 space-y-2"><div><dt className="text-slate-400">Email</dt><dd className="font-bold">{detail.student.email}</dd></div><div><dt className="text-slate-400">Student ID</dt><dd className="font-bold">{detail.student.studentId || "—"}</dd></div><div><dt className="text-slate-400">Мэргэжил</dt><dd className="font-bold">{detail.student.major || "—"}</dd></div><div><dt className="text-slate-400">Cover note</dt><dd className="mt-1 whitespace-pre-wrap">{detail.coverNote || "—"}</dd></div></dl>{detail.cv && <button type="button" onClick={() => operationsService.downloadApplicationCv(detail.cv).catch(failure => onToast(failure.message))} className="mt-4 rounded-lg bg-slate-900 px-4 py-2 font-bold text-white">CV татах</button>}</section>
-        <section className="rounded-xl border border-slate-200 p-5"><div className="flex items-center justify-between"><h3 className="font-display text-sm font-bold">Төлөвийн түүх</h3><Badge value={detail.status} /></div><ol className="mt-4 space-y-3">{detail.history.map(entry => <li key={entry.id} className="rounded-lg bg-slate-50 p-3 text-xs"><div className="flex flex-wrap items-center gap-2"><Badge value={entry.toStatus} /><span className="text-slate-500">{entry.fromStatus || "Үүсгэсэн"} → {entry.toStatus}</span></div><p className="mt-1 text-[10px] text-slate-400">{entry.actor} · {new Intl.DateTimeFormat("mn-MN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(entry.createdAt))}</p>{entry.reason && <p className="mt-2 text-slate-600">{entry.reason}</p>}</li>)}</ol></section>
+        <section className="rounded-xl border border-slate-200 p-5"><div className="flex items-center justify-between"><h3 className="font-display text-sm font-bold">Төлөвийн түүх</h3><Badge value={detail.status} /></div><ol className="mt-4 space-y-3">{detail.history.map(entry => <li key={entry.id} className="rounded-lg bg-slate-50 p-3 text-xs"><div className="flex flex-wrap items-center gap-2"><Badge value={entry.toStatus} /><span className="text-slate-500">{entry.fromStatus || "Үүсгэсэн"} → {entry.toStatus}</span></div><p className="mt-1 text-[10px] text-slate-400">{entry.actor} · {formatDateTime(entry.createdAt)}</p>{entry.reason && <p className="mt-2 text-slate-600">{entry.reason}</p>}</li>)}</ol></section>
       </div>
       {nextApplicationStatuses[detail.status]?.length > 0 && <section className="mt-5 rounded-xl border border-blue-100 bg-blue-50 p-5"><p className="text-xs text-blue-800">Approve, reject болон бусад төлөвийн өөрчлөлт шууд хийгдэж audit log-д автоматаар бүртгэгдэнэ.</p><div className="mt-4 flex flex-wrap gap-2">{nextApplicationStatuses[detail.status].map(status => <button key={status} type="button" disabled={busy} onClick={() => changeStatus(status)} className={`rounded-lg px-4 py-2 text-xs font-bold text-white disabled:opacity-50 ${status === "REJECTED" ? "bg-rose-600" : status === "ACCEPTED" ? "bg-emerald-600" : "bg-blue-600"}`}>{status}</button>)}</div></section>}
     </Modal>}
   </>;
 }
 
-function GenericManagement({ route, role, data, onAction, onToast, onRefresh }) {
+function GenericManagement({ route, role, data, onAction, onToast }) {
   if (route.includes("reports") || route.includes("analytics")) return <ReportsPage global={role === "PLATFORM_SUPER_ADMIN"} onToast={onToast} data={data} />;
   if (route.includes("audit-logs")) return <AuditPage data={data} global={role === "PLATFORM_SUPER_ADMIN"} />;
   if (route.includes("partnerships")) return <PartnershipPage data={data} onAction={onAction} />;
   if (route.includes("roles") || route.includes("permissions")) return <RolesPermissions onAction={onAction} />;
   if (route.includes("users") || route.endsWith("/staff") || route.endsWith("/students") || route.includes("/admins")) return <UserManagement data={data} route={route} onAction={onAction} />;
   if (route === "/admin/university-profile") return <UniversityProfilePage onToast={onToast} />;
+  if (route === "/admin/feedback" || route === "/platform/feedback") return <FeedbackAdminPage onToast={onToast} />;
   if (route.includes("profile") || route.includes("settings") || route.includes("notifications") || route.includes("university-profile")) return <><PageHeader title={route.includes("settings") ? "Тохиргоо" : route.includes("notifications") ? "Мэдэгдэл" : route.includes("university-profile") ? "Сургуулийн профайл" : "Профайл"} description="Role-д тохирох account, notification, branding, security болон workspace тохиргоо." /><div className="grid gap-5 lg:grid-cols-2">{["Үндсэн мэдээлэл", "Notification preference", "Security", "Идэвхтэй session"].map(item => <section key={item} className="rounded-2xl border border-slate-200 bg-white p-6"><h2 className="font-display font-bold">{item}</h2><p className="mt-2 text-sm text-slate-500">Энэ тохиргоо зөвхөн таны role болон workspace хүрээнд үйлчилнэ.</p><button type="button" onClick={() => onToast(`${item} хадгалагдлаа.`)} className="mt-4 rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold">Тохируулах</button></section>)}</div></>;
   return <ContentManagement data={data} route={route} onManage={onAction} onToast={onToast} />;
 }
@@ -1446,7 +1592,7 @@ export default function OperationsExperience({ user, onLogout, GlobalStyles }) {
   else if (user.role === "PLATFORM_SUPER_ADMIN" && route === "/platform/monitoring") page = <MonitoringPage data={data} onAction={action} />;
   else if (route.endsWith("/notifications")) page = <OperationsNotificationsPage notifications={data.notifications || []} onOpen={readNotification} onMarkAll={markAllNotificationsRead} />;
   else if (route.endsWith("/settings")) page = <SettingsPage user={user} onLogout={onLogout} />;
-  else page = <GenericManagement route={route} role={user.role} data={data} onAction={action} onToast={setToast} onRefresh={refreshData} />;
+  else page = <GenericManagement route={route} role={user.role} data={data} onAction={action} onToast={setToast} />;
   const routeRole = route.startsWith("/staff") ? "STAFF" : route.startsWith("/admin") ? "UNIVERSITY_ADMIN" : route.startsWith("/platform") ? "PLATFORM_SUPER_ADMIN" : user.role;
 
   return (
@@ -1455,7 +1601,7 @@ export default function OperationsExperience({ user, onLogout, GlobalStyles }) {
         notifications={data.notifications || []} onNotificationClick={readNotification} onOpenNotifications={() => navigate(`${config.base}/notifications`)}>
         {page}
       </DashboardLayout>
-      {detail && <Modal title={detail.title || detail.name || detail.university || "Дэлгэрэнгүй"} onClose={() => setDetail(null)} wide>{detail.statusHistory ? <div className="space-y-5"><ContentEditor content={detail} onError={setToast} onDelete={() => setConfirm({ action: "delete-content", item: detail })} onSaved={async () => { await refreshData(); setDetail(null); setToast("Контентын өөрчлөлтийг хадгаллаа."); }} /><ContentDescriptionPanel content={detail} user={user} canManageRegistrations={Boolean(data.capabilities?.canManageRegistrations)} onToast={setToast} /><section className="rounded-xl bg-slate-50 p-5"><h3 className="font-display text-sm font-bold">Lifecycle түүх</h3><ol className="mt-4 space-y-3">{detail.statusHistory.map(entry => <li key={entry.id} className="flex flex-wrap items-center gap-2 text-xs"><Badge value={entry.toStatus} /><span className="text-slate-500">{entry.fromStatus || "Үүсгэсэн"} → {entry.toStatus}</span><time className="ml-auto text-slate-400">{new Intl.DateTimeFormat("mn-MN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(entry.createdAt))}</time>{entry.reason && <p className="w-full text-slate-500">{entry.reason}</p>}</li>)}</ol></section></div> : <div className="grid gap-3 md:grid-cols-2">{Object.entries(detail).filter(([,value]) => value == null || ["string","number","boolean"].includes(typeof value)).map(([key,value]) => <div key={key} className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{key}</div><div className="mt-2 break-words text-sm font-semibold text-slate-700">{String(value ?? "—")}</div></div>)}</div>}<div className="mt-5 flex flex-wrap justify-end gap-2">
+      {detail && <Modal title={detail.title || detail.name || detail.university || "Дэлгэрэнгүй"} onClose={() => setDetail(null)} wide>{detail.statusHistory ? <div className="space-y-5"><ContentEditor content={detail} onError={setToast} onDelete={() => setConfirm({ action: "delete-content", item: detail })} onSaved={async () => { await refreshData(); setDetail(null); setToast("Контентын өөрчлөлтийг хадгаллаа."); }} /><ContentDescriptionPanel content={detail} user={user} canManageRegistrations={Boolean(data.capabilities?.canManageRegistrations)} onToast={setToast} /><section className="rounded-xl bg-slate-50 p-5"><h3 className="font-display text-sm font-bold">Lifecycle түүх</h3><ol className="mt-4 space-y-3">{detail.statusHistory.map(entry => <li key={entry.id} className="flex flex-wrap items-center gap-2 text-xs"><Badge value={entry.toStatus} /><span className="text-slate-500">{entry.fromStatus || "Үүсгэсэн"} → {entry.toStatus}</span><time className="ml-auto text-slate-400">{formatDateTime(entry.createdAt)}</time>{entry.reason && <p className="w-full text-slate-500">{entry.reason}</p>}</li>)}</ol></section></div> : <div className="grid gap-3 md:grid-cols-2">{Object.entries(detail).filter(([,value]) => value == null || ["string","number","boolean"].includes(typeof value)).map(([key,value]) => <div key={key} className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{key}</div><div className="mt-2 break-words text-sm font-semibold text-slate-700">{String(value ?? "—")}</div></div>)}</div>}<div className="mt-5 flex flex-wrap justify-end gap-2">
         {user.role === "STAFF" && detail.title && <>
           {detail.status === "DRAFT" && <button type="button" onClick={() => changeContentStatus(detail, "PENDING_APPROVAL", "Контент батлуулахаар амжилттай илгээгдлээ.")} className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white">Батлуулахаар илгээх</button>}
           {detail.status === "PUBLISHED" && <button type="button" onClick={() => setConfirm({ action: "archive", item: detail })} className="rounded-lg border border-amber-200 px-4 py-2 text-xs font-bold text-amber-700">Archive</button>}

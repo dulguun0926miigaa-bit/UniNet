@@ -3,7 +3,8 @@ import { ChevronDown, CircleHelp, LogOut, MessageSquareText, Settings, UserRound
 import SidebarToggleButton from "./SidebarToggleButton";
 import NotificationDropdown from "./NotificationDropdown";
 import SidebarNavIcon from "./SidebarNavIcon";
-import UniversityLogo, { normalizeUniversityName } from "./UniversityLogo";
+import UniversityLogo from "./UniversityLogo";
+import { normalizeUniversityName } from "./universityBranding.js";
 
 export default function DashboardLayout({ user, route, routes, navigate, onLogout, children, GlobalStyles, notifications = [], onNotificationClick, onOpenNotifications }) {
   const [drawer, setDrawer] = useState(false);
@@ -13,6 +14,7 @@ export default function DashboardLayout({ user, route, routes, navigate, onLogou
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileMounted, setProfileMounted] = useState(false);
   const [profileClosing, setProfileClosing] = useState(false);
+  const [universityBrandOverride, setUniversityBrandOverride] = useState(null);
   const drawerRef = useRef(null);
   const toggleRef = useRef(null);
   const profileTriggerRef = useRef(null);
@@ -20,7 +22,8 @@ export default function DashboardLayout({ user, route, routes, navigate, onLogou
   const profileCloseTimerRef = useRef(null);
   const profileMenuId = useId();
   const roleLabel = user.role === "STAFF" ? "Staff" : user.role === "UNIVERSITY_ADMIN" ? "University Admin" : "Platform Super Admin";
-  const universityName = normalizeUniversityName(user.university);
+  const universityBrand = universityBrandOverride || user.university || null;
+  const universityName = normalizeUniversityName(universityBrand);
   const closeDrawer = useCallback(() => {
     setDrawer(false);
     window.setTimeout(() => toggleRef.current?.querySelector("button")?.focus(), 0);
@@ -42,10 +45,19 @@ export default function DashboardLayout({ user, route, routes, navigate, onLogou
   };
   useEffect(() => () => window.clearTimeout(profileCloseTimerRef.current), []);
   useEffect(() => {
-    let timer;
-    if (profileOpen) { setProfileMounted(true); setProfileClosing(false); }
-    else if (profileMounted) { setProfileClosing(true); timer = window.setTimeout(() => { setProfileMounted(false); setProfileClosing(false); }, 180); }
-    return () => window.clearTimeout(timer);
+    const onUniversityProfileUpdated = event => {
+      if (event.detail) setUniversityBrandOverride(current => ({ ...(current || user.university || {}), ...event.detail }));
+    };
+    window.addEventListener("uninet:university-profile-updated", onUniversityProfileUpdated);
+    return () => window.removeEventListener("uninet:university-profile-updated", onUniversityProfileUpdated);
+  }, [user.university]);
+  useEffect(() => {
+    let closeTimer;
+    const syncTimer = window.setTimeout(() => {
+      if (profileOpen) { setProfileMounted(true); setProfileClosing(false); }
+      else if (profileMounted) { setProfileClosing(true); closeTimer = window.setTimeout(() => { setProfileMounted(false); setProfileClosing(false); }, 180); }
+    }, 0);
+    return () => { window.clearTimeout(syncTimer); window.clearTimeout(closeTimer); };
   }, [profileOpen, profileMounted]);
   useEffect(() => {
     if (!profileOpen) return undefined;
@@ -146,11 +158,11 @@ export default function DashboardLayout({ user, route, routes, navigate, onLogou
           <div className={`flex min-h-28 border-b border-slate-100 ${collapsed ? "items-center justify-center px-3" : "items-start px-8 py-5"}`}>
             {collapsed ? (
               <>
-                <UniversityLogo university={universityName} className="hidden h-12 w-12 md:inline-grid" />
+                <UniversityLogo university={universityBrand} className="hidden h-12 w-12 md:inline-grid" />
                 <div className="md:hidden"><div className="font-display text-sm font-bold">{universityName}</div><div className="mt-1 text-[10px] text-slate-400">{user.department || "UniNet Operations"}</div></div>
               </>
             ) : (
-              <div className="min-w-0"><div className="font-display truncate text-sm font-bold">{universityName}</div><div className="mt-1 truncate text-[10px] text-slate-400">{user.department || "UniNet Operations"}</div><div className="mt-3 inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-[9px] font-bold text-emerald-700">Workspace active</div></div>
+              <div className="flex min-w-0 items-start gap-3"><UniversityLogo university={universityBrand} className="h-12 w-12" /><div className="min-w-0"><div className="font-display truncate text-sm font-bold">{universityName}</div><div className="mt-1 truncate text-[10px] text-slate-400">{user.department || "UniNet Operations"}</div><div className="mt-3 inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-[9px] font-bold text-emerald-700">Workspace active</div></div></div>
             )}
           </div>
           <nav className="sidebar-scrollbar h-[calc(100%-7rem)] space-y-1 overflow-y-auto p-4" aria-label={`${roleLabel} navigation`}>

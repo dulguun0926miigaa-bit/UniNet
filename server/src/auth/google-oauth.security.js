@@ -3,6 +3,10 @@ import { AppError } from '../utils/app-error.js'
 export const GOOGLE_ISSUERS = new Set(['accounts.google.com', 'https://accounts.google.com'])
 export const CANONICAL_GOOGLE_ISSUER = 'https://accounts.google.com'
 
+/**
+ * @param {any} identity
+ * @param {{ clientId?: string, expectedNonce?: string, now?: number, clockSkewSeconds?: number }} [options]
+ */
 export function validateGoogleIdentityClaims(identity, { clientId, expectedNonce, now = Date.now(), clockSkewSeconds = 60 } = {}) {
   const issuer = String(identity?.iss || '')
   const audience = String(identity?.aud || '')

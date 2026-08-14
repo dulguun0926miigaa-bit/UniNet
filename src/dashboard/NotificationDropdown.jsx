@@ -23,10 +23,12 @@ export default function NotificationDropdown({ open, onToggle, onClose, notifica
     closeTimerRef.current = window.setTimeout(onClose, 450);
   };
   useEffect(() => {
-    let timer;
-    if (open) { setMounted(true); setClosing(false); }
-    else if (mounted) { setClosing(true); timer = window.setTimeout(() => { setMounted(false); setClosing(false); }, 180); }
-    return () => window.clearTimeout(timer);
+    let closeTimer;
+    const syncTimer = window.setTimeout(() => {
+      if (open) { setMounted(true); setClosing(false); }
+      else if (mounted) { setClosing(true); closeTimer = window.setTimeout(() => { setMounted(false); setClosing(false); }, 180); }
+    }, 0);
+    return () => { window.clearTimeout(syncTimer); window.clearTimeout(closeTimer); };
   }, [open, mounted]);
   useEffect(() => {
     if (!open) return undefined;

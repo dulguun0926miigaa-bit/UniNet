@@ -44,6 +44,14 @@ describe('secure upload validation', () => {
     expect(result.sha256).toMatch(/^[a-f0-9]{64}$/u)
   })
 
+  it('accepts a signature-verified university logo image', async () => {
+    const result = await inspectUpload({
+      purpose: 'UNIVERSITY_LOGO', originalName: 'university-logo.png', buffer: onePixelPng, maximumBytes: 1024 * 1024,
+    })
+    expect(result).toMatchObject({ detectedMime: 'image/png', originalName: 'university-logo.png', sizeBytes: onePixelPng.length })
+    expect(result.sha256).toMatch(/^[a-f0-9]{64}$/u)
+  })
+
   it('generates randomized opaque keys and rejects unsafe storage keys', () => {
     const first = createStorageKeys('STUDENT_CV', new Date('2026-07-27T00:00:00Z'))
     const second = createStorageKeys('STUDENT_CV', new Date('2026-07-27T00:00:00Z'))

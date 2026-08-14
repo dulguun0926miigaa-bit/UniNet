@@ -79,6 +79,8 @@ const publicUser = user => ({
     shortName: user.university.shortName,
     slug: user.university.slug,
     logoUrl: user.university.logoUrl,
+    primaryColor: user.university.primaryColor,
+    secondaryColor: user.university.secondaryColor,
   },
   studentProfile: user.studentProfile,
   staffProfile: user.staffProfile,
@@ -106,6 +108,7 @@ function signState(payload, audience, expiresIn) {
   })
 }
 
+/** @returns {any} */
 function verifyState(token, audience) {
   return jwt.verify(token, env.oauthStateSecret, {
     algorithms: ['HS256'], issuer: 'uninet-api', audience,
@@ -164,7 +167,7 @@ async function audit(action, user, context, nextData = {}, severity = 'INFO') {
       resourceId: user?.id ?? null,
       resourceName: user?.gmail ? `google:${crypto.createHash('sha256').update(user.gmail).digest('hex').slice(0, 20)}` : 'google-oauth',
       nextData,
-      severity,
+      severity: /** @type {import('@prisma/client').AuditSeverity} */ (severity),
       ipAddress: context.ipAddress,
       userAgent: context.userAgent?.slice(0, 500),
     },
@@ -399,7 +402,7 @@ export const googleOAuthService = {
         }),
       ])
       if (user.status === 'PENDING_REVIEW' && user.role === 'STUDENT' && user.emailVerifiedAt) {
-        const completion = await authRepository.completeRegistrationWithoutEmailVerification(user.id)
+        const completion = /** @type {any} */ (await authRepository.completeRegistrationWithoutEmailVerification(user.id))
         if (completion.status === 'completed' || completion.status === 'alreadyCompleted') user = completion.user
       }
       if (user.status === 'PENDING_VERIFICATION') {
@@ -507,7 +510,7 @@ export const googleOAuthService = {
         return updated
       })
       if (linked.status === 'PENDING_REVIEW' && linked.emailVerifiedAt) {
-        const completion = await authRepository.completeRegistrationWithoutEmailVerification(linked.id)
+        const completion = /** @type {any} */ (await authRepository.completeRegistrationWithoutEmailVerification(linked.id))
         if (completion.status === 'completed' || completion.status === 'alreadyCompleted') linked = completion.user
       }
       await audit('GOOGLE_OAUTH_EXISTING_STUDENT_LINKED', linked, context, { status: linked.status }, 'MEDIUM')
@@ -587,7 +590,7 @@ export const googleOAuthService = {
       }
     }
 
-    const completion = await authRepository.completeRegistrationWithoutEmailVerification(user.id)
+    const completion = /** @type {any} */ (await authRepository.completeRegistrationWithoutEmailVerification(user.id))
     if (completion.status !== 'completed' && completion.status !== 'alreadyCompleted') {
       throw new AppError('Бүртгэлийн төлөвийг шинэчилж чадсангүй.', 500, 'REGISTRATION_COMPLETION_FAILED')
     }

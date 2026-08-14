@@ -12,13 +12,13 @@ export const adminRoutes = [
   ["Нүүр", "/admin"], ["Баталгаажуулалт", "/admin/approvals"], ["Контент", "/admin/content"], ["Хэрэглэгчид", "/admin/users"],
   ["Ажилтнууд", "/admin/staff"], ["Оюутнууд", "/admin/students"], ["Role ба эрх", "/admin/roles"], ["Түншлэл", "/admin/partnerships"],
   ["Бүртгэлүүд", "/admin/registrations"], ["Өргөдлүүд", "/admin/applications"],
-  ["Тайлан ба аналитик", "/admin/reports"], ["Audit Log", "/admin/audit-logs"], ["Сургуулийн профайл", "/admin/university-profile"],
+  ["Тайлан ба аналитик", "/admin/reports"], ["Санал хүсэлт", "/admin/feedback"], ["Audit Log", "/admin/audit-logs"], ["Сургуулийн профайл", "/admin/university-profile"],
 ].map(([label, path]) => ({ label, path }));
 
 export const platformRoutes = [
   ["Network Dashboard", "/platform"], ["Их сургуулиуд", "/platform/universities"], ["Шинэ сургууль нэмэх", "/platform/universities/create"],
   ["University Admin-ууд", "/platform/admins"], ["Нийт хэрэглэгчид", "/platform/users"], ["Түншлэлийн сүлжээ", "/platform/partnerships"],
-  ["Global Analytics", "/platform/analytics"], ["Audit Logs", "/platform/audit-logs"], ["System Monitoring", "/platform/monitoring"],
+  ["Global Analytics", "/platform/analytics"], ["Санал хүсэлт", "/platform/feedback"], ["Audit Logs", "/platform/audit-logs"], ["System Monitoring", "/platform/monitoring"],
 ].map(([label, path]) => ({ label, path }));
 
 const unwrap = payload => payload?.data ?? payload;
@@ -150,6 +150,18 @@ export const operationsService = {
     const form = new FormData();
     form.append("file", file);
     return unwrap(await request("/files/university/logo", { method: "POST", body: form, timeoutMs: 45_000 }));
+  },
+  async listFeedback({ page = 1, pageSize = 20, search = "", status = "" } = {}) {
+    const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    if (search) query.set("search", search);
+    if (status && status !== "ALL") query.set("status", status);
+    return unwrap(await request(`/settings/feedback/admin?${query}`));
+  },
+  async updateFeedbackStatus(id, status) {
+    return unwrap(await request(`/settings/feedback/admin/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }));
   },
   async addUniversityDomain(universityId, domain, isPrimary = false) {
     return unwrap(await request(`/universities/${encodeURIComponent(universityId)}/domains`, {

@@ -889,6 +889,7 @@ model Notification {
 model UserSettings {
   id            String   @id @default(uuid()) @db.Uuid
   userId        String   @unique @db.Uuid
+  account       Json?
   security      Json?
   notifications Json?
   privacy       Json?

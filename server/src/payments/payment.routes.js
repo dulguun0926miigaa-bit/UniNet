@@ -98,7 +98,8 @@ async function refundPayment(charge) {
 
 router.post('/stripe/webhook', async (req, res, next) => {
   try {
-    const event = verifyStripeWebhook(req.rawBody, req.get('stripe-signature'))
+    const rawBody = /** @type {import('express').Request & { rawBody?: Buffer }} */ (req).rawBody
+    const event = verifyStripeWebhook(rawBody, req.get('stripe-signature'))
     if (event.type === 'checkout.session.completed') await completeCheckout(event.data?.object || {})
     if (event.type === 'checkout.session.expired') {
       const session = event.data?.object || {}
@@ -106,7 +107,7 @@ router.post('/stripe/webhook', async (req, res, next) => {
     }
     if (event.type === 'payment_intent.payment_failed') {
       const intent = event.data?.object || {}
-      await closePendingPayment({ paymentId: intent.metadata?.paymentId, status: 'FAILED', action: 'STRIPE_PAYMENT_FAILED' })
+      await closePendingPayment({ paymentId: intent.metadata?.paymentId, providerSessionId: null, status: 'FAILED', action: 'STRIPE_PAYMENT_FAILED' })
     }
     if (event.type === 'charge.refunded') await refundPayment(event.data?.object || {})
     res.json({ received: true })

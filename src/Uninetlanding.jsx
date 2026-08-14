@@ -11,6 +11,7 @@ import { authService, roleHome } from "./auth/authService";
 import AppErrorBoundary from "./errors/AppErrorBoundary";
 import { mongolianErrorMessage } from "./errors/errorMessages.js";
 import { apiRequest } from "./api/apiClient.js";
+import { formatDate, formatDateTime } from "./settings/uiPreferences.js";
 
 const StudentExperience = lazy(() => import("./student/StudentExperience"));
 const OperationsExperience = lazy(() => import("./operations/OperationsExperience"));
@@ -509,7 +510,6 @@ function CampusGlyph({ uni, size = 220 }) {
 /* ============================================================
    NETWORK BACKGROUND — glowing nodes + animated connecting lines
    ============================================================ */
-// eslint-disable-next-line no-unused-vars
 function NetworkBackground({ activeIdx }) {
   const positions = [
     { x: 120, y: 90 }, { x: 340, y: 60 }, { x: 560, y: 110 },
@@ -581,7 +581,7 @@ export default function UniNetLanding() {
     cat: item.type === "EVENT" ? "events" : item.type === "INTERNSHIP" ? "internships" : item.type === "RESEARCH" ? "surveys" : "all",
     title: item.title,
     desc: item.shortDescription,
-    date: item.startsAt ? new Date(item.startsAt).toLocaleDateString("mn-MN") : item.deadlineAt ? `Хугацаа: ${new Date(item.deadlineAt).toLocaleDateString("mn-MN")}` : "Нээлттэй",
+    date: item.startsAt ? formatDate(item.startsAt) : item.deadlineAt ? `Хугацаа: ${formatDate(item.deadlineAt)}` : "Нээлттэй",
     loc: item.location || item.mode || "Онлайн",
     vis: item.visibility === "PUBLIC" ? "Public" : "Network",
   }));
@@ -855,59 +855,62 @@ export default function UniNetLanding() {
   };
  
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const emailChangeToken = params.get("emailChangeToken");
-    if (emailChangeToken) {
-      authService.confirmEmailChange(emailChangeToken).then(result => {
-        setAuthMessage(result.message);
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams(window.location.search);
+      const emailChangeToken = params.get("emailChangeToken");
+      if (emailChangeToken) {
+        authService.confirmEmailChange(emailChangeToken).then(result => {
+          setAuthMessage(result.message);
+          setAuthView("login");
+          window.history.replaceState({}, "", "/");
+        }).catch(reason => { setAuthMessage(reason.message); setAuthView("login"); });
+        return;
+      }
+      const oauth = params.get("oauth");
+      if (!oauth) return;
+      if (oauth === "success") {
+        authService.restoreSession().then(account => {
+          setCurrentUser(account);
+          window.history.replaceState({}, "", resolvePostAuthPath(account, roleHome[account.role] || "/"));
+        }).catch(reason => { setAuthMessage(reason.message); openAuth("login"); });
+      }
+      if (oauth === "mfa") {
+        setMfaFlow({ oauth: true });
+        setAuthView("mfa-login");
+        setAuthMessage("Google нэвтрэлтийг дуусгахын тулд MFA код оруулна уу.");
+        window.history.replaceState({}, "", "/");
+      }
+      if (oauth === "mfa-enroll") {
+        authService.startOAuthMfaBootstrap().then(enrollment => {
+          setMfaFlow({ oauth: true, ...enrollment });
+          setAuthView("mfa-enroll");
+          setAuthMessage("Admin account-д MFA заавал идэвхжүүлнэ.");
+          window.history.replaceState({}, "", "/");
+        }).catch(reason => { setAuthMessage(reason.message); setAuthView("login"); });
+      }
+      if (oauth === "onboarding") {
+        authService.getGoogleOnboarding().then(payload => {
+          setGoogleProfile(payload.profile);
+          setGoogleOnboardingMode(payload.profile?.intent === "register" ? "REGISTER_NEW" : "LINK_EXISTING");
+          setAuthView("google-onboarding");
+          window.history.replaceState({}, "", "/");
+        }).catch(reason => { setAuthMessage(reason.message); openAuth("signup"); });
+      }
+      if (oauth === "verify") {
+        const verificationEmail = params.get("email") || "";
+        setPendingVerificationEmail(verificationEmail);
+        setAuthView("verify");
+        setAuthMessage("Сургуулийн имэйлээр ирсэн 6 оронтой кодыг оруулж бүртгэлээ идэвхжүүлнэ үү.");
+        window.history.replaceState({}, "", "/");
+      }
+      if (oauth === "error") {
+        const code = params.get("code") || "GOOGLE_AUTH_FAILED";
+        setAuthMessage(mongolianErrorMessage({ code }));
         setAuthView("login");
         window.history.replaceState({}, "", "/");
-      }).catch(reason => { setAuthMessage(reason.message); setAuthView("login"); });
-      return;
-    }
-    const oauth = params.get("oauth");
-    if (!oauth) return;
-    if (oauth === "success") {
-      authService.restoreSession().then(account => {
-        setCurrentUser(account);
-        window.history.replaceState({}, "", resolvePostAuthPath(account, roleHome[account.role] || "/"));
-      }).catch(reason => { setAuthMessage(reason.message); openAuth("login"); });
-    }
-    if (oauth === "mfa") {
-      setMfaFlow({ oauth: true });
-      setAuthView("mfa-login");
-      setAuthMessage("Google нэвтрэлтийг дуусгахын тулд MFA код оруулна уу.");
-      window.history.replaceState({}, "", "/");
-    }
-    if (oauth === "mfa-enroll") {
-      authService.startOAuthMfaBootstrap().then(enrollment => {
-        setMfaFlow({ oauth: true, ...enrollment });
-        setAuthView("mfa-enroll");
-        setAuthMessage("Admin account-д MFA заавал идэвхжүүлнэ.");
-        window.history.replaceState({}, "", "/");
-      }).catch(reason => { setAuthMessage(reason.message); setAuthView("login"); });
-    }
-    if (oauth === "onboarding") {
-      authService.getGoogleOnboarding().then(payload => {
-        setGoogleProfile(payload.profile);
-        setGoogleOnboardingMode(payload.profile?.intent === "register" ? "REGISTER_NEW" : "LINK_EXISTING");
-        setAuthView("google-onboarding");
-        window.history.replaceState({}, "", "/");
-      }).catch(reason => { setAuthMessage(reason.message); openAuth("signup"); });
-    }
-    if (oauth === "verify") {
-      const verificationEmail = params.get("email") || "";
-      setPendingVerificationEmail(verificationEmail);
-      setAuthView("verify");
-      setAuthMessage("Сургуулийн имэйлээр ирсэн 6 оронтой кодыг оруулж бүртгэлээ идэвхжүүлнэ үү.");
-      window.history.replaceState({}, "", "/");
-    }
-    if (oauth === "error") {
-      const code = params.get("code") || "GOOGLE_AUTH_FAILED";
-      setAuthMessage(mongolianErrorMessage({ code }));
-      setAuthView("login");
-      window.history.replaceState({}, "", "/");
-    }
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -923,15 +926,17 @@ export default function UniNetLanding() {
 
   useEffect(() => {
     const match = window.location.pathname.match(/^\/event\/([0-9a-f-]{36})\/?$/i);
-    if (!match) { setPublicEventState(null); return undefined; }
     const controller = new AbortController();
-    setPublicEventState({ loading: true, event: null, error: "" });
-    apiRequest(`/public/events/${match[1]}`, { auth: false, signal: controller.signal, cacheTtlMs: 15_000 })
-      .then(payload => setPublicEventState({ loading: false, event: payload.event, error: "" }))
-      .catch(reason => {
-        if (reason.name !== "AbortError") setPublicEventState({ loading: false, event: null, error: reason.message || "Арга хэмжээ олдсонгүй." });
-      });
-    return () => controller.abort();
+    const timer = window.setTimeout(() => {
+      if (!match) { setPublicEventState(null); return; }
+      setPublicEventState({ loading: true, event: null, error: "" });
+      apiRequest(`/public/events/${match[1]}`, { auth: false, signal: controller.signal, cacheTtlMs: 15_000 })
+        .then(payload => setPublicEventState({ loading: false, event: payload.event, error: "" }))
+        .catch(reason => {
+          if (reason.name !== "AbortError") setPublicEventState({ loading: false, event: null, error: reason.message || "Арга хэмжээ олдсонгүй." });
+        });
+    }, 0);
+    return () => { window.clearTimeout(timer); controller.abort(); };
   }, []);
 
   useEffect(() => {
@@ -1095,7 +1100,7 @@ export default function UniNetLanding() {
               const event = publicEventState.event;
               return <>
                 <div className="bg-gradient-to-br from-blue-600 to-violet-700 p-7 text-white md:p-9"><div className="flex items-center justify-between gap-3"><span className="rounded-full bg-white/15 px-3 py-1 text-[10px] font-bold uppercase tracking-wider">Event QR registration</span><button type="button" onClick={() => { window.history.replaceState({}, "", "/"); setPublicEventState(null); }} aria-label="Хаах" className="rounded-lg bg-white/10 px-3 py-1.5 text-xl">×</button></div><h2 id="public-event-title" className="font-display mt-6 text-3xl font-bold">{event.title}</h2><p className="mt-3 text-sm leading-relaxed text-blue-100">{event.shortDescription}</p></div>
-                <div className="p-7 md:p-9"><div className="grid gap-3 rounded-2xl bg-slate-50 p-5 text-sm sm:grid-cols-2"><div><span className="text-xs text-slate-400">Сургууль</span><b className="mt-1 block">{event.university?.shortName || event.university?.name || "UniNet"}</b></div><div><span className="text-xs text-slate-400">Огноо</span><b className="mt-1 block">{event.startsAt ? new Intl.DateTimeFormat("mn-MN", { dateStyle: "long", timeStyle: "short" }).format(new Date(event.startsAt)) : "Тодорхойгүй"}</b></div><div><span className="text-xs text-slate-400">Байршил</span><b className="mt-1 block">{event.location || event.mode || "Онлайн"}</b></div><div><span className="text-xs text-slate-400">Суудал</span><b className="mt-1 block">{event.seatsRemaining == null ? "Хязгааргүй" : `${event.seatsRemaining} үлдсэн`}</b></div></div><p className="mt-6 whitespace-pre-wrap text-sm leading-7 text-slate-600">{event.description}</p><button type="button" onClick={() => requestEventTicket(event.id)} className="mt-7 w-full rounded-xl bg-slate-900 py-4 text-sm font-bold text-white shadow-lg shadow-slate-900/15">{currentUser?.role === "STUDENT" ? "Тасалбар авах" : "Нэвтрээд тасалбар авах"}</button><p className="mt-3 text-center text-[10px] text-slate-400">Нэвтэрсний дараа event detail рүү буцаж, “Тасалбар авах” товчоор баталгаажуулна.</p></div>
+                <div className="p-7 md:p-9"><div className="grid gap-3 rounded-2xl bg-slate-50 p-5 text-sm sm:grid-cols-2"><div><span className="text-xs text-slate-400">Сургууль</span><b className="mt-1 block">{event.university?.shortName || event.university?.name || "UniNet"}</b></div><div><span className="text-xs text-slate-400">Огноо, цаг</span><b className="mt-1 block">{event.startsAt ? `${formatDateTime(event.startsAt)}${event.endsAt ? ` — ${formatDateTime(event.endsAt)}` : ""}` : "Тодорхойгүй"}</b></div><div><span className="text-xs text-slate-400">Байршил</span><b className="mt-1 block">{event.location || event.mode || "Онлайн"}</b></div><div><span className="text-xs text-slate-400">Суудал</span><b className="mt-1 block">{event.seatsRemaining == null ? "Хязгааргүй" : `${event.seatsRemaining} үлдсэн`}</b></div></div><p className="mt-6 whitespace-pre-wrap text-sm leading-7 text-slate-600">{event.description}</p><button type="button" onClick={() => requestEventTicket(event.id)} className="mt-7 w-full rounded-xl bg-slate-900 py-4 text-sm font-bold text-white shadow-lg shadow-slate-900/15">{currentUser?.role === "STUDENT" ? "Тасалбар авах" : "Нэвтрээд тасалбар авах"}</button><p className="mt-3 text-center text-[10px] text-slate-400">Нэвтэрсний дараа event detail рүү буцаж, “Тасалбар авах” товчоор баталгаажуулна.</p></div>
               </>;
             })()}
           </div>

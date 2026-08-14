@@ -102,7 +102,7 @@ const googleOnboardingSchema = z.discriminatedUnion('mode', [
 router.get('/google/start', authIpLimiter, (req, res, next) => {
   try {
     const rememberMe = String(req.query.rememberMe || '').toLowerCase() === 'true'
-    const { state, verifierToken, url } = googleOAuthService.start(req.query.intent, rememberMe)
+    const { state, verifierToken, url } = googleOAuthService.start(String(req.query.intent || ''), rememberMe)
     res.cookie(oauthStateCookie, state, { ...oauthCookieOptions, maxAge: 5 * 60 * 1000 })
     res.cookie(oauthVerifierCookie, verifierToken, { ...oauthCookieOptions, maxAge: 5 * 60 * 1000 })
     res.redirect(302, url)
@@ -120,12 +120,12 @@ router.get('/google/callback', authIpLimiter, async (req, res) => {
     return res.redirect(302, `${env.APP_URL}/?oauth=error&code=${encodeURIComponent(code)}`)
   }
   try {
-    const result = await googleOAuthService.callback({
+    const result = /** @type {any} */ (await googleOAuthService.callback({
       code: req.query.code,
       state: req.query.state,
       stateCookie: req.cookies[oauthStateCookie],
       verifierCookie: req.cookies[oauthVerifierCookie],
-    }, context(req))
+    }, context(req)))
     clearOAuthCookies()
     if (result.type === 'session') {
       const { refreshToken } = result

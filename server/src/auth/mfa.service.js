@@ -34,6 +34,9 @@ const publicUser = user => ({
     name: user.university.name,
     shortName: user.university.shortName,
     slug: user.university.slug,
+    logoUrl: user.university.logoUrl,
+    primaryColor: user.university.primaryColor,
+    secondaryColor: user.university.secondaryColor,
   },
   studentProfile: user.studentProfile,
   staffProfile: user.staffProfile,
@@ -127,6 +130,7 @@ async function issueTokens(user, context = {}, { mfaVerified = false } = {}) {
   return { accessToken, refreshToken }
 }
 
+/** @param {any} context */
 async function audit(action, user, context = {}, nextData = {}, severity = 'MEDIUM') {
   await prisma.auditLog.create({
     data: {
@@ -137,7 +141,7 @@ async function audit(action, user, context = {}, nextData = {}, severity = 'MEDI
       resourceId: user?.id ?? null,
       resourceName: user?.email ?? 'mfa',
       nextData,
-      severity,
+      severity: /** @type {import('@prisma/client').AuditSeverity} */ (severity),
       ipAddress: context.ipAddress,
       userAgent: context.userAgent?.slice(0, 500),
     },
@@ -306,8 +310,8 @@ export const mfaService = {
           resourceName: user.email,
           nextData: { method: 'TOTP', recoveryCodesCreated: recoveryCodes.length },
           severity: 'HIGH',
-          ipAddress: context.ipAddress,
-          userAgent: context.userAgent?.slice(0, 500),
+          ipAddress: /** @type {any} */ (context).ipAddress,
+          userAgent: /** @type {any} */ (context).userAgent?.slice(0, 500),
         },
       })
     })

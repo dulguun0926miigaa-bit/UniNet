@@ -46,6 +46,7 @@ function reportWhere(user, id) {
   return surveyReportScope(user, id)
 }
 
+/** @returns {import('@prisma/client').Prisma.SurveyWhereInput} */
 function searchWhere(search) {
   if (!search) return {}
   return {
@@ -56,8 +57,9 @@ function searchWhere(search) {
   }
 }
 
+/** @returns {import('@prisma/client').Prisma.SurveyOrderByWithRelationInput[]} */
 function orderBy(sortBy, sortOrder) {
-  return [{ [sortBy]: sortOrder }, { id: 'asc' }]
+  return /** @type {import('@prisma/client').Prisma.SurveyOrderByWithRelationInput[]} */ ([{ [sortBy]: sortOrder }, { id: 'asc' }])
 }
 
 async function audienceWhere(user) {
@@ -82,6 +84,7 @@ async function findReportableSurvey(user, id) {
   return survey
 }
 
+/** @param {import('@prisma/client').Prisma.TransactionClient | typeof prisma} database */
 async function assertPartnerVisibilityAvailable(database, universityId, visibility, status) {
   if (visibility !== 'PARTNERS' || status !== 'PUBLISHED') return
   if (!universityId) {
@@ -122,10 +125,10 @@ router.get('/', searchReadLimiter, async (req, res, next) => {
   try {
     const query = parseInput(publishedSurveyListQueryInput, req.query, 'Судалгааны жагсаалтын шүүлтүүрээ шалгана уу.')
     const audience = await audienceWhere(req.auth.user)
-    const where = {
+    const where = /** @type {import('@prisma/client').Prisma.SurveyWhereInput} */ ({
       status: 'PUBLISHED',
       AND: [audience, searchWhere(query.search)],
-    }
+    })
     const [surveys, total] = await prisma.$transaction([
       prisma.survey.findMany({
         where,
@@ -154,12 +157,12 @@ router.get('/', searchReadLimiter, async (req, res, next) => {
 router.get('/manage', searchReadLimiter, requireRole(...managerRoles), requirePermission('canManageSurveys'), async (req, res, next) => {
   try {
     const query = parseInput(manageSurveyListQueryInput, req.query, 'Жагсаалтын шүүлтүүрээ шалгана уу.')
-    const where = {
+    const where = /** @type {import('@prisma/client').Prisma.SurveyWhereInput} */ ({
       ...managementWhere(req.auth.user),
       ...(query.status ? { status: query.status } : {}),
       ...(query.visibility ? { visibility: query.visibility } : {}),
       ...searchWhere(query.search),
-    }
+    })
     const [surveys, total] = await prisma.$transaction([
       prisma.survey.findMany({
         where,
@@ -271,9 +274,9 @@ router.get('/:id', async (req, res, next) => {
   try {
     const id = surveyId(req.params)
     const canManage = managerRoles.includes(req.auth.user.role) && hasPermission(req.auth.user, 'canManageSurveys')
-    const scope = canManage
+    const scope = /** @type {import('@prisma/client').Prisma.SurveyWhereInput} */ (canManage
       ? managementWhere(req.auth.user)
-      : { status: 'PUBLISHED', ...(await audienceWhere(req.auth.user)) }
+      : { status: 'PUBLISHED', ...(await audienceWhere(req.auth.user)) })
     const survey = await prisma.survey.findFirst({
       where: { id, ...scope },
       include: { university: { select: { shortName: true } }, _count: { select: { responses: true } } },

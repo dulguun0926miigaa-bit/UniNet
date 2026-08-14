@@ -79,6 +79,7 @@ function serializeContent(item) {
     startsAt: item.startsAt?.toISOString() ?? null,
     endsAt: item.endsAt?.toISOString() ?? null,
     deadline: dateOnly(item.deadlineAt),
+    deadlineAt: item.deadlineAt?.toISOString() ?? null,
     capacity: item.capacity,
     pricingType: item.pricingType || 'FREE',
     priceAmount: item.priceAmount || 0,

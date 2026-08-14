@@ -58,7 +58,10 @@ app.use(cors({
   },
   credentials: true,
 }))
-app.use(express.json({ limit: '100kb', strict: true, inflate: false, verify(req, _res, buffer) { if (req.originalUrl?.startsWith('/api/payments/stripe/webhook')) req.rawBody = Buffer.from(buffer) } }))
+app.use(express.json({ limit: '100kb', strict: true, inflate: false, verify(req, _res, buffer) {
+  const request = /** @type {import('express').Request & { rawBody?: Buffer }} */ (req)
+  if (request.originalUrl?.startsWith('/api/payments/stripe/webhook')) request.rawBody = Buffer.from(buffer)
+} }))
 app.use(express.urlencoded({ limit: '100kb', extended: false, parameterLimit: 100, inflate: false }))
 app.use(cookieParser())
 app.use('/api', sqlInjectionGuard)
